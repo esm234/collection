@@ -44,6 +44,12 @@ admin_messages_to_users: Dict[int, int] = {}
 # Maps: admin_id -> last_info_message_id
 admin_info_messages: Dict[int, int] = {}
 
+# Maps: user_message_id -> admin_message_id (for reply tracking)
+user_to_admin_messages: Dict[int, int] = {}
+
+# Maps: admin_message_id -> user_message_id (for reply tracking)
+admin_to_user_messages: Dict[int, int] = {}
+
 async def set_menu_button(application: Application) -> None:
     """Set the menu button to show commands."""
     await application.bot.set_chat_menu_button(
@@ -100,27 +106,36 @@ async def handle_user_message(update: Update, context: CallbackContext) -> None:
             admin_id = admin_messages_to_users[replied_msg_id]
             
             try:
-                # Send user info as a new message
-                info_msg = await context.bot.send_message(
-                    chat_id=admin_id, 
-                    text=f"↩️ {user.first_name} replied to your message:"
-                )
+                # Find the original admin message ID that this is a reply to
+                admin_msg_id = None
+                for a_msg_id, u_msg_id in admin_to_user_messages.items():
+                    if u_msg_id == replied_msg_id:
+                        admin_msg_id = a_msg_id
+                        break
                 
-                # Store this info message ID
-                admin_info_messages[admin_id] = info_msg.message_id
-                
-                # Send the actual message content as a reply to the info message
-                admin_msg = await context.bot.send_message(
-                    chat_id=admin_id,
-                    text=message.text,
-                    reply_to_message_id=info_msg.message_id
-                )
+                # Send the user's reply to the admin
+                if admin_msg_id:
+                    # Reply directly to the admin's original message
+                    admin_msg = await context.bot.send_message(
+                        chat_id=admin_id,
+                        text=message.text,
+                        reply_to_message_id=admin_msg_id
+                    )
+                else:
+                    # Fallback if we can't find the original admin message
+                    admin_msg = await context.bot.send_message(
+                        chat_id=admin_id,
+                        text=message.text
+                    )
                 
                 # Store the mapping between admin message ID and original user ID
                 forwarded_messages[admin_msg.message_id] = user_id
                 
                 # Store the mapping between admin message ID and original message ID
                 original_messages[admin_msg.message_id] = message.message_id
+                
+                # Store the mapping between user message and this admin message
+                user_to_admin_messages[message.message_id] = admin_msg.message_id
                 
                 # Confirm receipt to the user
                 await message.reply_text("✅ تم إرسال ردك للمشرف")
@@ -159,6 +174,9 @@ async def handle_user_message(update: Update, context: CallbackContext) -> None:
             
             # Store the mapping between admin message ID and original message ID
             original_messages[admin_msg.message_id] = message.message_id
+            
+            # Store the mapping between user message and this admin message
+            user_to_admin_messages[message.message_id] = admin_msg.message_id
             
             # Update the last admin who received a message from this user
             user_to_admin_map[user_id] = admin_id
@@ -204,9 +222,11 @@ async def handle_admin_reply(update: Update, context: CallbackContext) -> None:
         return
     
     try:
+        admin_name = update.effective_user.first_name
+        
         # Forward the admin's reply to the original user
         if original_msg_id:
-            # Reply directly to the user's original message
+            # Reply directly to the user's original message without any prefix text
             sent_msg = await context.bot.send_message(
                 chat_id=original_user_id,
                 text=update.message.text,
@@ -224,6 +244,9 @@ async def handle_admin_reply(update: Update, context: CallbackContext) -> None:
         
         # Store the message mapping for tracking replies - use sent_msg.message_id as key
         admin_messages_to_users[sent_msg.message_id] = admin_id
+        
+        # Store the mapping between admin message and user message
+        admin_to_user_messages[update.message.message_id] = sent_msg.message_id
         
         # Log the successful admin reply
         logger.info(f"Admin {admin_id} replied to user {original_user_id}, message sent")
