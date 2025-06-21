@@ -38,6 +38,9 @@ user_to_admin_map: Dict[int, int] = {}
 # Maps: user_message_id -> (admin_id, admin_message_id)
 user_message_map: Dict[int, Tuple[int, int]] = {}
 
+# Maps: admin messages sent to users -> admin_id
+admin_messages_to_users: Dict[int, int] = {}
+
 async def start_command(update: Update, context: CallbackContext) -> None:
     """Send welcome message when the command /start is issued."""
     user = update.effective_user
@@ -68,57 +71,74 @@ async def start_command(update: Update, context: CallbackContext) -> None:
     
     await update.message.reply_text(welcome_message, reply_markup=reply_markup)
 
-async def forward_to_admins(update: Update, context: CallbackContext) -> None:
-    """Forward user messages to all admin users."""
-    # Skip messages from admins to avoid loops
+async def handle_user_message(update: Update, context: CallbackContext) -> None:
+    """Handle all messages from users (both new messages and replies)."""
+    # Skip messages from admins in this handler
     if update.effective_user.id in ADMIN_IDS:
         return
     
     user = update.effective_user
     user_id = user.id
-    user_info = f"👤 Message from: {user.first_name} {user.last_name if user.last_name else ''} (@{user.username if user.username else 'No username'})\n"
-    user_info += f"🆔 User ID: {user.id}\n\n"
-    user_info += "📝 Message:"
+    message = update.message
     
     # Check if this is a reply to an admin's message
-    if update.message.reply_to_message and user_id in user_to_admin_map:
-        # This is a reply to an admin, send it only to that admin
-        admin_id = user_to_admin_map[user_id]
-        try:
-            # First send user info
-            await context.bot.send_message(chat_id=admin_id, text=f"↩️ {user.first_name} replied to your message:\n\n")
+    if message.reply_to_message:
+        replied_msg_id = message.reply_to_message.message_id
+        
+        # Check if this is a reply to a message sent by an admin through the bot
+        if replied_msg_id in admin_messages_to_users:
+            admin_id = admin_messages_to_users[replied_msg_id]
             
-            # Then forward the actual message
-            forwarded_msg = await update.message.forward(chat_id=admin_id)
-            
-            # Store the mapping between forwarded message ID and original user ID
-            forwarded_messages[forwarded_msg.message_id] = user_id
-            
-            # Confirm receipt to the user
-            await update.message.reply_text("✅ تم إرسال ردك للمشرف")
-            
-        except Exception as e:
-            logger.error(f"Failed to forward reply to admin {admin_id}: {e}")
-            await update.message.reply_text("❌ حدث خطأ في إرسال ردك")
-            
-    else:
-        # Regular message, forward to all admins
-        for admin_id in ADMIN_IDS:
             try:
-                # First send user info
-                admin_msg = await context.bot.send_message(chat_id=admin_id, text=user_info)
+                # Send user info
+                await context.bot.send_message(
+                    chat_id=admin_id, 
+                    text=f"↩️ {user.first_name} replied to your message:\n\n"
+                )
                 
-                # Then forward the actual message
-                forwarded_msg = await update.message.forward(chat_id=admin_id)
+                # Forward the actual message
+                forwarded_msg = await message.forward(chat_id=admin_id)
                 
                 # Store the mapping between forwarded message ID and original user ID
                 forwarded_messages[forwarded_msg.message_id] = user_id
                 
+                # Confirm receipt to the user
+                await message.reply_text("✅ تم إرسال ردك للمشرف")
+                
+                # Log the successful reply
+                logger.info(f"User {user_id} replied to admin {admin_id}, message forwarded")
+                
             except Exception as e:
-                logger.error(f"Failed to forward message to admin {admin_id}: {e}")
-        
-        # Confirm receipt to the user
-        await update.message.reply_text("تم استلام رسالتك وسيتم الرد عليك في أقرب وقت ✅")
+                logger.error(f"Failed to forward reply to admin {admin_id}: {e}")
+                await message.reply_text("❌ حدث خطأ في إرسال ردك")
+            
+            return
+    
+    # If not a reply or reply to non-admin message, treat as a new message
+    # and forward to all admins
+    user_info = f"👤 Message from: {user.first_name} {user.last_name if user.last_name else ''} (@{user.username if user.username else 'No username'})\n"
+    user_info += f"🆔 User ID: {user.id}\n\n"
+    user_info += "📝 Message:"
+    
+    for admin_id in ADMIN_IDS:
+        try:
+            # First send user info
+            await context.bot.send_message(chat_id=admin_id, text=user_info)
+            
+            # Then forward the actual message
+            forwarded_msg = await message.forward(chat_id=admin_id)
+            
+            # Store the mapping between forwarded message ID and original user ID
+            forwarded_messages[forwarded_msg.message_id] = user_id
+            
+            # Update the last admin who received a message from this user
+            user_to_admin_map[user_id] = admin_id
+            
+        except Exception as e:
+            logger.error(f"Failed to forward message to admin {admin_id}: {e}")
+    
+    # Confirm receipt to the user
+    await message.reply_text("تم استلام رسالتك وسيتم الرد عليك في أقرب وقت ✅")
 
 async def handle_admin_reply(update: Update, context: CallbackContext) -> None:
     """Handle replies from admins to forward them back to the original user."""
@@ -147,8 +167,11 @@ async def handle_admin_reply(update: Update, context: CallbackContext) -> None:
             # Store the mapping of user to admin for future replies
             user_to_admin_map[original_user_id] = admin_id
             
-            # Store the message mapping
-            user_message_map[sent_msg.message_id] = (admin_id, update.message.message_id)
+            # Store the message mapping for tracking replies
+            admin_messages_to_users[sent_msg.message_id] = admin_id
+            
+            # Log the successful admin reply
+            logger.info(f"Admin {admin_id} replied to user {original_user_id}, message sent")
             
             await update.message.reply_text("✅ تم إرسال ردك للمستخدم")
             
@@ -170,8 +193,8 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start_command))
     
     # Add message handlers
-    application.add_handler(MessageHandler(filters.REPLY & filters.TEXT & ~filters.COMMAND & ~filters.ChatType.CHANNEL & ~filters.ChatType.GROUP, handle_admin_reply))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.ChatType.CHANNEL & ~filters.ChatType.GROUP, forward_to_admins))
+    application.add_handler(MessageHandler(filters.REPLY & filters.TEXT & ~filters.COMMAND & filters.User(ADMIN_IDS), handle_admin_reply))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.ChatType.CHANNEL & ~filters.ChatType.GROUP, handle_user_message))
 
     # Run the bot until the user presses Ctrl-C
     application.run_polling(allowed_updates=Update.ALL_TYPES)
