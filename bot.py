@@ -29,17 +29,20 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_IDS = [int(admin_id) for admin_id in os.getenv("ADMIN_IDS", "").split(",") if admin_id]
 
 # In-memory storage
-# Maps: forwarded_msg_id -> original_user_id
+# Maps: admin_msg_id -> original_user_id
 forwarded_messages: Dict[int, int] = {}
 
 # Maps: user_id -> last_admin_id_who_replied
 user_to_admin_map: Dict[int, int] = {}
 
-# Maps: forwarded_msg_id -> original_msg_id
+# Maps: admin_msg_id -> original_msg_id (user's message ID)
 original_messages: Dict[int, int] = {}
 
 # Maps: admin messages sent to users -> admin_id
 admin_messages_to_users: Dict[int, int] = {}
+
+# Maps: admin_id -> last_info_message_id
+admin_info_messages: Dict[int, int] = {}
 
 async def set_menu_button(application: Application) -> None:
     """Set the menu button to show commands."""
@@ -97,55 +100,71 @@ async def handle_user_message(update: Update, context: CallbackContext) -> None:
             admin_id = admin_messages_to_users[replied_msg_id]
             
             try:
-                # Send user info
-                await context.bot.send_message(
+                # Send user info as a new message
+                info_msg = await context.bot.send_message(
                     chat_id=admin_id, 
-                    text=f"↩️ {user.first_name} replied to your message:\n\n"
+                    text=f"↩️ {user.first_name} replied to your message:"
                 )
                 
-                # Forward the actual message
-                forwarded_msg = await message.forward(chat_id=admin_id)
+                # Store this info message ID
+                admin_info_messages[admin_id] = info_msg.message_id
                 
-                # Store the mapping between forwarded message ID and original user ID
-                forwarded_messages[forwarded_msg.message_id] = user_id
+                # Send the actual message content as a reply to the info message
+                admin_msg = await context.bot.send_message(
+                    chat_id=admin_id,
+                    text=message.text,
+                    reply_to_message_id=info_msg.message_id
+                )
+                
+                # Store the mapping between admin message ID and original user ID
+                forwarded_messages[admin_msg.message_id] = user_id
+                
+                # Store the mapping between admin message ID and original message ID
+                original_messages[admin_msg.message_id] = message.message_id
                 
                 # Confirm receipt to the user
                 await message.reply_text("✅ تم إرسال ردك للمشرف")
                 
                 # Log the successful reply
-                logger.info(f"User {user_id} replied to admin {admin_id}, message forwarded")
+                logger.info(f"User {user_id} replied to admin {admin_id}, message sent")
                 
             except Exception as e:
-                logger.error(f"Failed to forward reply to admin {admin_id}: {e}")
+                logger.error(f"Failed to send reply to admin {admin_id}: {e}")
                 await message.reply_text("❌ حدث خطأ في إرسال ردك")
             
             return
     
     # If not a reply or reply to non-admin message, treat as a new message
     # and forward to all admins
-    user_info = f"👤 Message from: {user.first_name} {user.last_name if user.last_name else ''} (@{user.username if user.username else 'No username'})\n"
-    user_info += f"🆔 User ID: {user.id}\n\n"
-    user_info += "📝 Message:"
-    
     for admin_id in ADMIN_IDS:
         try:
             # First send user info
-            await context.bot.send_message(chat_id=admin_id, text=user_info)
+            user_info = f"👤 Message from: {user.first_name} {user.last_name if user.last_name else ''} (@{user.username if user.username else 'No username'})\n"
+            user_info += f"🆔 User ID: {user.id}"
             
-            # Then forward the actual message
-            forwarded_msg = await message.forward(chat_id=admin_id)
+            info_msg = await context.bot.send_message(chat_id=admin_id, text=user_info)
             
-            # Store the mapping between forwarded message ID and original user ID
-            forwarded_messages[forwarded_msg.message_id] = user_id
+            # Store this info message ID
+            admin_info_messages[admin_id] = info_msg.message_id
             
-            # Store the mapping between forwarded message ID and original message ID
-            original_messages[forwarded_msg.message_id] = message.message_id
+            # Then send the actual message as a reply to the info message
+            admin_msg = await context.bot.send_message(
+                chat_id=admin_id,
+                text=message.text,
+                reply_to_message_id=info_msg.message_id
+            )
+            
+            # Store the mapping between admin message ID and original user ID
+            forwarded_messages[admin_msg.message_id] = user_id
+            
+            # Store the mapping between admin message ID and original message ID
+            original_messages[admin_msg.message_id] = message.message_id
             
             # Update the last admin who received a message from this user
             user_to_admin_map[user_id] = admin_id
             
         except Exception as e:
-            logger.error(f"Failed to forward message to admin {admin_id}: {e}")
+            logger.error(f"Failed to send message to admin {admin_id}: {e}")
     
     # Confirm receipt to the user
     await message.reply_text("تم استلام رسالتك وسيتم الرد عليك في أقرب وقت ✅")
@@ -157,51 +176,65 @@ async def handle_admin_reply(update: Update, context: CallbackContext) -> None:
     if admin_id not in ADMIN_IDS:
         return
     
-    # Check if this is a reply to a forwarded message
+    # Check if this is a reply to a message
     if not update.message.reply_to_message:
         return
     
     replied_msg_id = update.message.reply_to_message.message_id
     
-    # Check if we have the original user ID for this forwarded message
+    # Check if the admin is replying to a user message or to the info message
     if replied_msg_id in forwarded_messages:
+        # Admin is replying directly to the user message
         original_user_id = forwarded_messages[replied_msg_id]
-        
-        try:
-            # Get the original message ID if available
-            original_msg_id = original_messages.get(replied_msg_id)
-            
-            # Forward the admin's reply to the original user
-            if original_msg_id:
-                # Reply directly to the user's original message
-                sent_msg = await context.bot.send_message(
-                    chat_id=original_user_id,
-                    text=update.message.text,
-                    reply_to_message_id=original_msg_id
-                )
-            else:
-                # Fallback if original message ID is not available
-                sent_msg = await context.bot.send_message(
-                    chat_id=original_user_id,
-                    text=update.message.text
-                )
-            
-            # Store the mapping of user to admin for future replies
-            user_to_admin_map[original_user_id] = admin_id
-            
-            # Store the message mapping for tracking replies
-            admin_messages_to_users[sent_msg.message_id] = admin_id
-            
-            # Log the successful admin reply
-            logger.info(f"Admin {admin_id} replied to user {original_user_id}, message sent")
-            
-            await update.message.reply_text("✅ تم إرسال ردك للمستخدم")
-            
-        except Exception as e:
-            logger.error(f"Failed to send admin reply to user {original_user_id}: {e}")
-            await update.message.reply_text(f"❌ فشل إرسال الرد: {e}")
+        original_msg_id = original_messages.get(replied_msg_id)
+    elif admin_id in admin_info_messages and replied_msg_id == admin_info_messages[admin_id]:
+        # Admin is replying to the info message
+        # Try to find the next message from this user
+        for msg_id, user_id in forwarded_messages.items():
+            if user_id not in ADMIN_IDS:
+                original_user_id = user_id
+                original_msg_id = original_messages.get(msg_id)
+                break
+        else:
+            # Could not find a user message
+            await update.message.reply_text("❌ لا يمكن العثور على المستخدم الأصلي لهذه الرسالة")
+            return
     else:
-        await update.message.reply_text("❌ لا يمكن العثور على المستخدم الأصلي لهذه الرسالة")
+        # Not a reply to a user message or info message
+        return
+    
+    try:
+        # Get the original message ID if available
+        
+        # Forward the admin's reply to the original user
+        if original_msg_id:
+            # Reply directly to the user's original message
+            sent_msg = await context.bot.send_message(
+                chat_id=original_user_id,
+                text=update.message.text,
+                reply_to_message_id=original_msg_id
+            )
+        else:
+            # Fallback if original message ID is not available
+            sent_msg = await context.bot.send_message(
+                chat_id=original_user_id,
+                text=update.message.text
+            )
+        
+        # Store the mapping of user to admin for future replies
+        user_to_admin_map[original_user_id] = admin_id
+        
+        # Store the message mapping for tracking replies
+        admin_messages_to_users[sent_msg.message_id] = admin_id
+        
+        # Log the successful admin reply
+        logger.info(f"Admin {admin_id} replied to user {original_user_id}, message sent")
+        
+        await update.message.reply_text("✅ تم إرسال ردك للمستخدم")
+        
+    except Exception as e:
+        logger.error(f"Failed to send admin reply to user {original_user_id}: {e}")
+        await update.message.reply_text(f"❌ فشل إرسال الرد: {e}")
 
 async def setup_commands(application: Application) -> None:
     """Set bot commands that will appear in the menu."""
