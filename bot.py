@@ -38,7 +38,7 @@ user_to_admin_map: Dict[int, int] = {}
 # Maps: admin_msg_id -> original_msg_id (user's message ID)
 original_messages: Dict[int, int] = {}
 
-# Maps: admin messages sent to users -> admin_id
+# Maps: user message ID -> admin who sent the message
 admin_messages_to_users: Dict[int, int] = {}
 
 # Maps: admin_id -> last_info_message_id
@@ -204,8 +204,6 @@ async def handle_admin_reply(update: Update, context: CallbackContext) -> None:
         return
     
     try:
-        # Get the original message ID if available
-        
         # Forward the admin's reply to the original user
         if original_msg_id:
             # Reply directly to the user's original message
@@ -224,7 +222,7 @@ async def handle_admin_reply(update: Update, context: CallbackContext) -> None:
         # Store the mapping of user to admin for future replies
         user_to_admin_map[original_user_id] = admin_id
         
-        # Store the message mapping for tracking replies
+        # Store the message mapping for tracking replies - use sent_msg.message_id as key
         admin_messages_to_users[sent_msg.message_id] = admin_id
         
         # Log the successful admin reply
