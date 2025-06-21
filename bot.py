@@ -13,7 +13,6 @@ from telegram.ext import (
     CallbackContext,
     filters,
 )
-from keep_alive import keep_alive
 import telegram
 
 # Enable logging
@@ -401,9 +400,6 @@ async def setup_commands(application: Application) -> None:
 
 def main() -> None:
     """Start the bot."""
-    # Keep the bot alive
-    keep_alive()
-    
     # Create the Application
     application = Application.builder().token(BOT_TOKEN).build()
 

@@ -3,6 +3,7 @@ import logging
 import sys
 import threading
 import time
+from flask import Flask
 
 # Configure logging
 logging.basicConfig(
@@ -17,40 +18,47 @@ logger = logging.getLogger("main")
 # Log startup information
 logger.info("Starting bot application")
 logger.info(f"Python version: {sys.version}")
-logger.info(f"Running in environment: {os.environ.get('REPL_SLUG', 'local')}")
+logger.info(f"Running in environment: {os.environ.get('RENDER', 'local')}")
 
 # Check for required environment variables
 if not os.environ.get('BOT_TOKEN'):
-    logger.warning("BOT_TOKEN environment variable is not set! Make sure to set it in Replit Secrets.")
+    logger.warning("BOT_TOKEN environment variable is not set! Make sure to set it in environment variables.")
 
-# Start anti-sleep mechanism in a separate thread
-def start_anti_sleep():
+# Create Flask app for Render.com
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is alive and running!"
+
+@app.route('/ping')
+def ping():
+    return "pong"
+
+# Start bot in a separate thread
+def run_bot():
     try:
-        logger.info("Starting anti-sleep mechanism")
-        import anti_sleep
-        anti_sleep_thread = threading.Thread(target=anti_sleep.main, daemon=True)
-        anti_sleep_thread.start()
-        logger.info("Anti-sleep mechanism started in background thread")
-    except ImportError:
-        logger.warning("Anti-sleep module not found, continuing without it")
+        logger.info("Importing bot module")
+        import bot
+        logger.info("Bot module imported successfully")
+        
+        # Directly call the main function from bot.py
+        logger.info("Starting bot.main()")
+        bot.main()
+    except ImportError as e:
+        logger.critical(f"Failed to import bot module: {e}")
+        sys.exit(1)
     except Exception as e:
-        logger.error(f"Failed to start anti-sleep mechanism: {e}")
+        logger.critical(f"Unexpected error during import or execution: {e}")
+        sys.exit(1)
 
-# Start anti-sleep in background
-start_anti_sleep()
+# Start the bot when this module is imported
+bot_thread = threading.Thread(target=run_bot, daemon=True)
+bot_thread.start()
+logger.info("Bot started in background thread")
 
-# Import and run the bot
-try:
-    logger.info("Importing bot module")
-    import bot
-    logger.info("Bot module imported successfully")
-    
-    # Directly call the main function from bot.py
-    logger.info("Starting bot.main()")
-    bot.main()
-except ImportError as e:
-    logger.critical(f"Failed to import bot module: {e}")
-    sys.exit(1)
-except Exception as e:
-    logger.critical(f"Unexpected error during import or execution: {e}")
-    sys.exit(1) 
+# This is used by gunicorn
+if __name__ == "__main__":
+    # If running directly, start the Flask server too
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port) 

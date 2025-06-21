@@ -72,4 +72,38 @@ To keep your bot running 24/7 on Replit:
 
 ## Customization
 
-You can customize the welcome message and other texts in the `bot.py` file. 
+You can customize the welcome message and other texts in the `bot.py` file.
+
+## Deployment on Render.com
+
+This bot is configured for deployment on Render.com. Follow these steps to deploy:
+
+1. Create a new account on [Render.com](https://render.com/) if you don't have one
+2. Connect your GitHub repository to Render
+3. Create a new Web Service and select your repository
+4. Use the following settings:
+   - **Environment**: Python
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `gunicorn -w 1 main:app`
+5. Add the following environment variables:
+   - `BOT_TOKEN`: Your Telegram bot token from BotFather
+   - `ADMIN_IDS`: Comma-separated list of admin user IDs
+
+The bot will automatically start and stay running without needing external ping services.
+
+## Commands
+
+- `/start` - Start the bot and see welcome message
+- `/release <user_id>` - (Admin only) Release a user from your queue so other admins can handle them
+
+## How It Works
+
+1. Users send messages to the bot
+2. Messages are forwarded to all admins
+3. When an admin replies, they become the handler for that user
+4. All future messages from that user go only to the assigned admin
+5. Admins can release users with the `/release` command
+
+## License
+
+MIT 
