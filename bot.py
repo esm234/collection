@@ -35,8 +35,8 @@ forwarded_messages: Dict[int, int] = {}
 # Maps: user_id -> last_admin_id_who_replied
 user_to_admin_map: Dict[int, int] = {}
 
-# Maps: user_message_id -> (admin_id, admin_message_id)
-user_message_map: Dict[int, Tuple[int, int]] = {}
+# Maps: forwarded_msg_id -> original_msg_id
+original_messages: Dict[int, int] = {}
 
 # Maps: admin messages sent to users -> admin_id
 admin_messages_to_users: Dict[int, int] = {}
@@ -138,6 +138,9 @@ async def handle_user_message(update: Update, context: CallbackContext) -> None:
             # Store the mapping between forwarded message ID and original user ID
             forwarded_messages[forwarded_msg.message_id] = user_id
             
+            # Store the mapping between forwarded message ID and original message ID
+            original_messages[forwarded_msg.message_id] = message.message_id
+            
             # Update the last admin who received a message from this user
             user_to_admin_map[user_id] = admin_id
             
@@ -165,11 +168,23 @@ async def handle_admin_reply(update: Update, context: CallbackContext) -> None:
         original_user_id = forwarded_messages[replied_msg_id]
         
         try:
+            # Get the original message ID if available
+            original_msg_id = original_messages.get(replied_msg_id)
+            
             # Forward the admin's reply to the original user
-            sent_msg = await context.bot.send_message(
-                chat_id=original_user_id,
-                text=f"🧑‍💻 رد من فريق الدعم:\n\n{update.message.text}"
-            )
+            if original_msg_id:
+                # Reply directly to the user's original message
+                sent_msg = await context.bot.send_message(
+                    chat_id=original_user_id,
+                    text=update.message.text,
+                    reply_to_message_id=original_msg_id
+                )
+            else:
+                # Fallback if original message ID is not available
+                sent_msg = await context.bot.send_message(
+                    chat_id=original_user_id,
+                    text=update.message.text
+                )
             
             # Store the mapping of user to admin for future replies
             user_to_admin_map[original_user_id] = admin_id
