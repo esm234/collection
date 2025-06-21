@@ -2,6 +2,8 @@ run = "python main.py"
 language = "python3"
 entrypoint = "main.py"
 hidden = [".env", ".gitignore", "venv", ".config", "**/__pycache__", "**/.mypy_cache", "**/*.pyc"]
+onBoot = "python main.py"
+persistentStorage = [".data"]
 
 [nix]
 channel = "stable-23_05"
@@ -9,6 +11,8 @@ channel = "stable-23_05"
 [env]
 PYTHONPATH = "${PYTHONPATH}:${REPL_HOME}"
 PYTHONUNBUFFERED = "1"
+VIRTUAL_ENV = "${REPL_HOME}/venv"
+PATH = "${VIRTUAL_ENV}/bin:${PATH}"
 
 [packager]
 language = "python3"
@@ -30,4 +34,17 @@ start = "pylsp"
 
 [deployment]
 run = ["sh", "-c", "python main.py"]
-deploymentTarget = "cloudrun" 
+deploymentTarget = "cloudrun"
+
+[interpreter]
+command = ["python3", "-u", "main.py"]
+
+[unitTest]
+language = "python3"
+
+[gitHubImport]
+requiredFiles = [".replit", "replit.nix", ".config"]
+
+[auth]
+pageEnabled = false
+buttonEnabled = false 

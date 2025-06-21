@@ -1,6 +1,8 @@
 import os
 import logging
 import sys
+import threading
+import time
 
 # Configure logging
 logging.basicConfig(
@@ -20,6 +22,22 @@ logger.info(f"Running in environment: {os.environ.get('REPL_SLUG', 'local')}")
 # Check for required environment variables
 if not os.environ.get('BOT_TOKEN'):
     logger.warning("BOT_TOKEN environment variable is not set! Make sure to set it in Replit Secrets.")
+
+# Start anti-sleep mechanism in a separate thread
+def start_anti_sleep():
+    try:
+        logger.info("Starting anti-sleep mechanism")
+        import anti_sleep
+        anti_sleep_thread = threading.Thread(target=anti_sleep.main, daemon=True)
+        anti_sleep_thread.start()
+        logger.info("Anti-sleep mechanism started in background thread")
+    except ImportError:
+        logger.warning("Anti-sleep module not found, continuing without it")
+    except Exception as e:
+        logger.error(f"Failed to start anti-sleep mechanism: {e}")
+
+# Start anti-sleep in background
+start_anti_sleep()
 
 # Import and run the bot
 try:
