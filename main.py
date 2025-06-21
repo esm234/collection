@@ -26,9 +26,13 @@ try:
     logger.info("Importing bot module")
     import bot
     logger.info("Bot module imported successfully")
+    
+    # Directly call the main function from bot.py
+    logger.info("Starting bot.main()")
+    bot.main()
 except ImportError as e:
     logger.critical(f"Failed to import bot module: {e}")
     sys.exit(1)
 except Exception as e:
-    logger.critical(f"Unexpected error during import: {e}")
+    logger.critical(f"Unexpected error during import or execution: {e}")
     sys.exit(1) 
