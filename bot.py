@@ -14,6 +14,8 @@ from telegram.ext import (
     filters,
 )
 import telegram
+import json
+from datetime import datetime
 
 # Enable logging
 logging.basicConfig(
@@ -26,32 +28,46 @@ load_dotenv()
 
 # Bot configuration
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_IDS = [int(admin_id) for admin_id in os.getenv("ADMIN_IDS", "").split(",") if admin_id]
+ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID", "0"))
 
 # In-memory storage
-# Maps: admin_msg_id -> original_user_id
+# Maps: group_msg_id -> original_user_id
 forwarded_messages: Dict[int, int] = {}
 
-# Maps: user_id -> admin_id who is handling this user
-user_handlers: Dict[int, int] = {}
-
-# Maps: admin_msg_id -> original_msg_id (user's message ID)
+# Maps: group_msg_id -> original_msg_id (user's message ID)
 original_messages: Dict[int, int] = {}
 
-# Maps: user message ID -> admin who sent the message
-admin_messages_to_users: Dict[int, int] = {}
+# Maps: user message ID -> group message ID (for tracking)
+user_to_group_messages: Dict[int, int] = {}
 
-# Maps: admin_id -> last_info_message_id
-admin_info_messages: Dict[int, int] = {}
+# Maps: group_message_id -> user_message_id (for tracking)
+group_to_user_messages: Dict[int, int] = {}
 
-# Maps: user_message_id -> admin_message_id (for reply tracking)
-user_to_admin_messages: Dict[int, int] = {}
+# User tracking
+active_users: Dict[int, dict] = {}
+USERS_FILE = "users_data.json"
 
-# Maps: admin_message_id -> user_message_id (for reply tracking)
-admin_to_user_messages: Dict[int, int] = {}
+# Load existing users data if available
+def load_users_data():
+    try:
+        if os.path.exists(USERS_FILE):
+            with open(USERS_FILE, 'r', encoding='utf-8') as file:
+                return json.load(file)
+        return {}
+    except Exception as e:
+        logger.error(f"Failed to load users data: {e}")
+        return {}
 
-# Maps: admin_id -> admin name
-admin_names: Dict[int, str] = {}
+# Save users data to file
+def save_users_data():
+    try:
+        with open(USERS_FILE, 'w', encoding='utf-8') as file:
+            json.dump(active_users, file, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to save users data: {e}")
+
+# Initialize users data
+active_users = load_users_data()
 
 async def set_menu_button(application: Application) -> None:
     """Set the menu button to show commands."""
@@ -68,12 +84,12 @@ async def start_command(update: Update, context: CallbackContext) -> None:
     # Create inline keyboard with buttons
     keyboard = [
         [
-            InlineKeyboardButton("جروب المناقشة", url="https://t.me/example_group"),
-            InlineKeyboardButton("القناة الرئيسية", url="https://t.me/example_channel"),
+            InlineKeyboardButton("جروب المناقشة", url="https://t.me/ourgoul1"),
+            InlineKeyboardButton("القناة الرئيسية", url="https://t.me/our_goal_is_success"),
         ],
         [
-            InlineKeyboardButton("بوت الملفات", url="https://t.me/example_files_bot"),
-            InlineKeyboardButton("الموقع الإلكتروني", url="https://example.com"),
+            InlineKeyboardButton("بوت الملفات", url="https://t.me/our_goal_bot"),
+            InlineKeyboardButton("الموقع الإلكتروني", url="https://ourgoal.site"),
         ],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -88,153 +104,245 @@ async def start_command(update: Update, context: CallbackContext) -> None:
         "أرسل رسالتك وسوف يتم الرد عليك في أقرب وقت 🫡"
     )
     
-    # Reset any previous handler for this user
-    if update.effective_user.id in user_handlers:
-        del user_handlers[update.effective_user.id]
+    # Track user
+    user_id = user.id
+    if str(user_id) not in active_users:
+        active_users[str(user_id)] = {
+            "first_name": user.first_name,
+            "last_name": user.last_name or "",
+            "username": user.username or "",
+            "first_seen": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "last_active": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "message_count": 0
+        }
+    else:
+        active_users[str(user_id)]["last_active"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    save_users_data()
     
     await update.message.reply_text(welcome_message, reply_markup=reply_markup)
 
+async def stats_command(update: Update, context: CallbackContext) -> None:
+    """Show bot statistics."""
+    # Only process if message is from the admin group
+    if update.effective_chat.id != ADMIN_GROUP_ID:
+        return
+    
+    # Count total users and active users (active in the last 30 days)
+    total_users = len(active_users)
+    
+    # Generate stats message
+    stats_message = f"📊 <b>إحصائيات البوت</b>\n\n"
+    stats_message += f"👥 <b>إجمالي المستخدمين:</b> {total_users}\n"
+    
+    # Total messages processed
+    total_messages = sum(user.get("message_count", 0) for user in active_users.values())
+    stats_message += f"💬 <b>إجمالي الرسائل:</b> {total_messages}\n\n"
+    
+    # Show the most recent users
+    stats_message += "<b>آخر المستخدمين النشطين:</b>\n"
+    
+    # Sort users by last active time (most recent first)
+    recent_users = sorted(
+        active_users.items(),
+        key=lambda x: x[1].get("last_active", ""),
+        reverse=True
+    )[:10]  # Get top 10
+    
+    for i, (user_id, user_data) in enumerate(recent_users, 1):
+        name = user_data.get("first_name", "")
+        username = user_data.get("username", "")
+        last_active = user_data.get("last_active", "")
+        msg_count = user_data.get("message_count", 0)
+        
+        username_text = f" (@{username})" if username else ""
+        stats_message += f"{i}. {name}{username_text} - {msg_count} رسالة - آخر نشاط: {last_active}\n"
+    
+    await update.message.reply_text(stats_message, parse_mode="HTML")
+
+async def forward_to_admin_group(update: Update, context: CallbackContext, user_id: int, message_text: str = None) -> None:
+    """Forward a message to the admin group and handle the mapping."""
+    message = update.message
+    
+    # Forward the message directly to the admin group
+    try:
+        forwarded_msg = await context.bot.forward_message(
+            chat_id=ADMIN_GROUP_ID,
+            from_chat_id=message.chat_id,
+            message_id=message.message_id
+        )
+        
+        # Store mappings
+        forwarded_messages[forwarded_msg.message_id] = user_id
+        original_messages[forwarded_msg.message_id] = message.message_id
+        user_to_group_messages[message.message_id] = forwarded_msg.message_id
+        
+        return forwarded_msg
+    except Exception as e:
+        logger.error(f"Failed to forward message: {e}")
+        raise e
+
 async def handle_user_message(update: Update, context: CallbackContext) -> None:
-    """Handle all messages from users (both new messages and replies)."""
-    # Skip messages from admins in this handler
-    if update.effective_user.id in ADMIN_IDS:
+    """Handle all messages from users and forward them to the admin group."""
+    # Skip messages from the admin group
+    if update.effective_chat.id == ADMIN_GROUP_ID:
         return
     
     user = update.effective_user
     user_id = user.id
     message = update.message
     
-    # Check if this is a reply to an admin's message
+    # Track user activity
+    str_user_id = str(user_id)
+    if str_user_id not in active_users:
+        active_users[str_user_id] = {
+            "first_name": user.first_name,
+            "last_name": user.last_name or "",
+            "username": user.username or "",
+            "first_seen": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "last_active": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "message_count": 1
+        }
+    else:
+        active_users[str_user_id]["last_active"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        active_users[str_user_id]["message_count"] = active_users[str_user_id].get("message_count", 0) + 1
+    
+    save_users_data()
+    
+    # Check if this is a reply to a message from the bot
     if message.reply_to_message:
         replied_msg_id = message.reply_to_message.message_id
         
-        # Check if this is a reply to a message sent by an admin through the bot
-        if replied_msg_id in admin_messages_to_users:
-            admin_id = admin_messages_to_users[replied_msg_id]
-            
-            # Mark this admin as the handler for this user
-            user_handlers[user_id] = admin_id
-            
+        # Try to find the original group message this is a reply to
+        group_msg_id = None
+        for g_msg_id, u_msg_id in group_to_user_messages.items():
+            if u_msg_id == replied_msg_id:
+                group_msg_id = g_msg_id
+                break
+        
+        if group_msg_id:
             try:
-                # Find the original admin message ID that this is a reply to
-                admin_msg_id = None
-                for a_msg_id, u_msg_id in admin_to_user_messages.items():
-                    if u_msg_id == replied_msg_id:
-                        admin_msg_id = a_msg_id
-                        break
+                # Send as a reply to the original message in the group
+                user_name = f"{user.first_name} {user.last_name if user.last_name else ''}"
                 
-                # Send the user's reply to the admin
-                if admin_msg_id:
-                    # Reply directly to the admin's original message
-                    admin_msg = await context.bot.send_message(
-                        chat_id=admin_id,
-                        text=message.text,
-                        reply_to_message_id=admin_msg_id
+                if message.text:
+                    # For text messages
+                    reply_text = f"<b>رد من المستخدم {user_name}:</b>\n{message.text}"
+                    group_msg = await context.bot.send_message(
+                        chat_id=ADMIN_GROUP_ID,
+                        text=reply_text,
+                        reply_to_message_id=group_msg_id,
+                        parse_mode="HTML"
+                    )
+                elif message.photo:
+                    # For photos
+                    caption = f"<b>رد من المستخدم {user_name}:</b>\n{message.caption or ''}"
+                    group_msg = await context.bot.send_photo(
+                        chat_id=ADMIN_GROUP_ID,
+                        photo=message.photo[-1].file_id,
+                        caption=caption,
+                        reply_to_message_id=group_msg_id,
+                        parse_mode="HTML"
+                    )
+                elif message.document:
+                    # For documents
+                    caption = f"<b>رد من المستخدم {user_name}:</b>\n{message.caption or ''}"
+                    group_msg = await context.bot.send_document(
+                        chat_id=ADMIN_GROUP_ID,
+                        document=message.document.file_id,
+                        caption=caption,
+                        reply_to_message_id=group_msg_id,
+                        parse_mode="HTML"
+                    )
+                elif message.video:
+                    # For videos
+                    caption = f"<b>رد من المستخدم {user_name}:</b>\n{message.caption or ''}"
+                    group_msg = await context.bot.send_video(
+                        chat_id=ADMIN_GROUP_ID,
+                        video=message.video.file_id,
+                        caption=caption,
+                        reply_to_message_id=group_msg_id,
+                        parse_mode="HTML"
+                    )
+                elif message.voice:
+                    # For voice messages
+                    caption = f"<b>رد من المستخدم {user_name}:</b>\n{message.caption or ''}"
+                    group_msg = await context.bot.send_voice(
+                        chat_id=ADMIN_GROUP_ID,
+                        voice=message.voice.file_id,
+                        caption=caption,
+                        reply_to_message_id=group_msg_id,
+                        parse_mode="HTML"
+                    )
+                elif message.audio:
+                    # For audio messages
+                    caption = f"<b>رد من المستخدم {user_name}:</b>\n{message.caption or ''}"
+                    group_msg = await context.bot.send_audio(
+                        chat_id=ADMIN_GROUP_ID,
+                        audio=message.audio.file_id,
+                        caption=caption,
+                        reply_to_message_id=group_msg_id,
+                        parse_mode="HTML"
+                    )
+                elif message.sticker:
+                    # For stickers
+                    # First send the "reply from user" message
+                    info_msg = await context.bot.send_message(
+                        chat_id=ADMIN_GROUP_ID,
+                        text=f"<b>رد من المستخدم {user_name}:</b>",
+                        reply_to_message_id=group_msg_id,
+                        parse_mode="HTML"
+                    )
+                    # Then send the sticker
+                    group_msg = await context.bot.send_sticker(
+                        chat_id=ADMIN_GROUP_ID,
+                        sticker=message.sticker.file_id,
+                        reply_to_message_id=info_msg.message_id
                     )
                 else:
-                    # Fallback if we can't find the original admin message
-                    admin_msg = await context.bot.send_message(
-                        chat_id=admin_id,
-                        text=message.text
+                    # For other types
+                    reply_text = f"<b>رد من المستخدم {user_name}:</b>\n⚠️ نوع رسالة غير مدعوم"
+                    group_msg = await context.bot.send_message(
+                        chat_id=ADMIN_GROUP_ID,
+                        text=reply_text,
+                        reply_to_message_id=group_msg_id,
+                        parse_mode="HTML"
                     )
                 
-                # Store the mapping between admin message ID and original user ID
-                forwarded_messages[admin_msg.message_id] = user_id
-                
-                # Store the mapping between admin message ID and original message ID
-                original_messages[admin_msg.message_id] = message.message_id
-                
-                # Store the mapping between user message and this admin message
-                user_to_admin_messages[message.message_id] = admin_msg.message_id
+                # Store mappings
+                forwarded_messages[group_msg.message_id] = user_id
+                original_messages[group_msg.message_id] = message.message_id
+                user_to_group_messages[message.message_id] = group_msg.message_id
                 
                 # Confirm receipt to the user
-                await message.reply_text("✅ تم إرسال ردك للمشرف")
+                await message.reply_text("✅ تم إرسال ردك للمشرفين")
                 
-                # Log the successful reply
-                logger.info(f"User {user_id} replied to admin {admin_id}, message sent")
+                logger.info(f"User {user_id} replied to a message, sent to admin group")
                 
             except Exception as e:
-                logger.error(f"Failed to send reply to admin {admin_id}: {e}")
+                logger.error(f"Failed to send reply to admin group: {e}")
                 await message.reply_text("❌ حدث خطأ في إرسال ردك")
             
             return
     
-    # If not a reply or reply to non-admin message, treat as a new message
-    
-    # Check if this user already has a handler (admin)
-    if user_id in user_handlers:
-        # Only send to the assigned admin
-        admin_id = user_handlers[user_id]
+    # If not a reply or couldn't find the original message, treat as a new message
+    try:
+        await forward_to_admin_group(update, context, user_id)
         
-        try:
-            # Send user message directly to the assigned admin
-            admin_msg = await context.bot.send_message(
-                chat_id=admin_id,
-                text=message.text
-            )
-            
-            # Store the mapping between admin message ID and original user ID
-            forwarded_messages[admin_msg.message_id] = user_id
-            
-            # Store the mapping between admin message ID and original message ID
-            original_messages[admin_msg.message_id] = message.message_id
-            
-            # Store the mapping between user message and this admin message
-            user_to_admin_messages[message.message_id] = admin_msg.message_id
-            
-            # Confirm receipt to the user
-            await message.reply_text("✅ تم إرسال رسالتك للمشرف")
-            
-        except Exception as e:
-            logger.error(f"Failed to send message to admin {admin_id}: {e}")
-            await message.reply_text("❌ حدث خطأ في إرسال رسالتك")
+        # Confirm receipt to the user
+        await message.reply_text("تم استلام رسالتك وسيتم الرد عليك في أقرب وقت ✅")
         
-        return
-    
-    # If no handler assigned yet, forward to all admins
-    for admin_id in ADMIN_IDS:
-        try:
-            # First send user info
-            user_info = f"👤 Message from: {user.first_name} {user.last_name if user.last_name else ''} (@{user.username if user.username else 'No username'})\n"
-            user_info += f"🆔 User ID: {user.id}"
-            
-            info_msg = await context.bot.send_message(chat_id=admin_id, text=user_info)
-            
-            # Store this info message ID
-            admin_info_messages[admin_id] = info_msg.message_id
-            
-            # Then send the actual message as a reply to the info message
-            admin_msg = await context.bot.send_message(
-                chat_id=admin_id,
-                text=message.text,
-                reply_to_message_id=info_msg.message_id
-            )
-            
-            # Store the mapping between admin message ID and original user ID
-            forwarded_messages[admin_msg.message_id] = user_id
-            
-            # Store the mapping between admin message ID and original message ID
-            original_messages[admin_msg.message_id] = message.message_id
-            
-            # Store the mapping between user message and this admin message
-            user_to_admin_messages[message.message_id] = admin_msg.message_id
-            
-        except Exception as e:
-            logger.error(f"Failed to send message to admin {admin_id}: {e}")
-    
-    # Confirm receipt to the user
-    await message.reply_text("تم استلام رسالتك وسيتم الرد عليك في أقرب وقت ✅")
+        logger.info(f"User {user_id} sent a new message, forwarded to admin group")
+        
+    except Exception as e:
+        logger.error(f"Failed to forward message to admin group: {e}")
+        await message.reply_text("❌ حدث خطأ في إرسال رسالتك")
 
-async def handle_admin_reply(update: Update, context: CallbackContext) -> None:
-    """Handle replies from admins to forward them back to the original user."""
-    # Only process replies from admins
-    admin_id = update.effective_user.id
-    if admin_id not in ADMIN_IDS:
+async def handle_admin_group_reply(update: Update, context: CallbackContext) -> None:
+    """Handle replies from the admin group to forward them back to the original user."""
+    # Only process messages from the admin group
+    if update.effective_chat.id != ADMIN_GROUP_ID:
         return
-    
-    # Store admin name for future reference
-    admin_name = update.effective_user.first_name
-    admin_names[admin_id] = admin_name
     
     # Check if this is a reply to a message
     if not update.message.reply_to_message:
@@ -242,131 +350,62 @@ async def handle_admin_reply(update: Update, context: CallbackContext) -> None:
     
     replied_msg_id = update.message.reply_to_message.message_id
     
-    # Check if the admin is replying to a user message or to the info message
+    # Check if the admin is replying to a user message
     if replied_msg_id in forwarded_messages:
         # Admin is replying directly to the user message
         original_user_id = forwarded_messages[replied_msg_id]
         original_msg_id = original_messages.get(replied_msg_id)
         
-        # Mark this admin as the handler for this user
-        user_handlers[original_user_id] = admin_id
-        
-    elif admin_id in admin_info_messages and replied_msg_id == admin_info_messages[admin_id]:
-        # Admin is replying to the info message
-        # Try to find the next message from this user
+    else:
+        # Check if there's a forwarded message that's a reply to this message
+        # This handles the case when admin replies to the user info message
         for msg_id, user_id in forwarded_messages.items():
-            if user_id not in ADMIN_IDS:
-                original_user_id = user_id
-                original_msg_id = original_messages.get(msg_id)
+            try:
+                # Try to find messages that were sent as replies to the message the admin is replying to
+                msg = await context.bot.get_chat_message(
+                    chat_id=ADMIN_GROUP_ID,
+                    message_id=msg_id
+                )
                 
-                # Mark this admin as the handler for this user
-                user_handlers[original_user_id] = admin_id
-                
-                break
+                if msg.reply_to_message and msg.reply_to_message.message_id == replied_msg_id:
+                    original_user_id = user_id
+                    original_msg_id = original_messages.get(msg_id)
+                    break
+            except Exception as e:
+                logger.error(f"Error checking message {msg_id}: {e}")
+                continue
         else:
             # Could not find a user message
             await update.message.reply_text("❌ لا يمكن العثور على المستخدم الأصلي لهذه الرسالة")
             return
-    else:
-        # Not a reply to a user message or info message
-        return
     
     try:
         # Forward the admin's reply to the original user
-        if original_msg_id:
-            # Reply directly to the user's original message without any prefix text
-            sent_msg = await context.bot.send_message(
-                chat_id=original_user_id,
-                text=update.message.text,
-                reply_to_message_id=original_msg_id
-            )
-        else:
-            # Fallback if original message ID is not available
-            sent_msg = await context.bot.send_message(
-                chat_id=original_user_id,
-                text=update.message.text
-            )
+        message = update.message
         
-        # Store the mapping of user to admin for future replies
-        user_handlers[original_user_id] = admin_id
+        # Forward the message to the user
+        sent_msg = await context.bot.copy_message(
+            chat_id=original_user_id,
+            from_chat_id=ADMIN_GROUP_ID,
+            message_id=message.message_id,
+            reply_to_message_id=original_msg_id if original_msg_id else None
+        )
         
-        # Store the message mapping for tracking replies - use sent_msg.message_id as key
-        admin_messages_to_users[sent_msg.message_id] = admin_id
-        
-        # Store the mapping between admin message and user message
-        admin_to_user_messages[update.message.message_id] = sent_msg.message_id
-        
-        # Notify other admins that this conversation is being handled
-        for other_admin_id in ADMIN_IDS:
-            if other_admin_id != admin_id:
-                try:
-                    await context.bot.send_message(
-                        chat_id=other_admin_id,
-                        text=f"ℹ️ المستخدم {original_user_id} يتم التعامل معه حالياً بواسطة المشرف {admin_name}"
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to notify admin {other_admin_id}: {e}")
+        # Store the mapping between group message and user message
+        group_to_user_messages[update.message.message_id] = sent_msg.message_id
         
         # Log the successful admin reply
-        logger.info(f"Admin {admin_id} replied to user {original_user_id}, message sent")
+        logger.info(f"Admin replied to user {original_user_id}, message sent")
         
-        await update.message.reply_text("✅ تم إرسال ردك للمستخدم")
+        # React to the admin's message to indicate it was sent
+        try:
+            await update.message.react("✅")
+        except Exception as e:
+            logger.error(f"Failed to react to admin message: {e}")
         
     except Exception as e:
         logger.error(f"Failed to send admin reply to user {original_user_id}: {e}")
         await update.message.reply_text(f"❌ فشل إرسال الرد: {e}")
-
-async def release_user_command(update: Update, context: CallbackContext) -> None:
-    """Release a user from being handled by an admin."""
-    # Only process commands from admins
-    admin_id = update.effective_user.id
-    if admin_id not in ADMIN_IDS:
-        return
-    
-    # Check if there's a user ID in the command arguments
-    if not context.args or not context.args[0].isdigit():
-        await update.message.reply_text("❌ يرجى تحديد معرف المستخدم الذي تريد تحريره. مثال: /release 123456789")
-        return
-    
-    user_id = int(context.args[0])
-    
-    # Check if this user is being handled
-    if user_id in user_handlers:
-        handler_admin_id = user_handlers[user_id]
-        
-        # Check if the requesting admin is the handler
-        if handler_admin_id == admin_id:
-            # Get admin name
-            admin_name = admin_names.get(admin_id, "المشرف")
-            
-            # Notify the user that they are being released
-            try:
-                await context.bot.send_message(
-                    chat_id=user_id,
-                    text=f"⚠️ المشرف {admin_name} غير متوفر حالياً. سيتم تحويلك لمشرف آخر في أقرب وقت."
-                )
-            except Exception as e:
-                logger.error(f"Failed to notify user {user_id} about release: {e}")
-            
-            # Remove the handler
-            del user_handlers[user_id]
-            
-            # Notify all admins
-            for admin_id in ADMIN_IDS:
-                try:
-                    await context.bot.send_message(
-                        chat_id=admin_id,
-                        text=f"ℹ️ المستخدم {user_id} متاح الآن للرد من قبل أي مشرف"
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to notify admin {admin_id}: {e}")
-            
-            await update.message.reply_text(f"✅ تم تحرير المستخدم {user_id} وأصبح متاحاً للرد من قبل أي مشرف")
-        else:
-            admin_name = admin_names.get(handler_admin_id, "مشرف آخر")
-            await update.message.reply_text(f"❌ لا يمكنك تحرير هذا المستخدم لأنه يتم التعامل معه حالياً بواسطة {admin_name}")
-    else:
-        await update.message.reply_text(f"ℹ️ المستخدم {user_id} غير مخصص لأي مشرف حالياً")
 
 async def setup_commands(application: Application) -> None:
     """Set bot commands that will appear in the menu."""
@@ -376,25 +415,8 @@ async def setup_commands(application: Application) -> None:
         ("help", "عرض المساعدة"),
     ]
     
-    # Commands for admin users (including release command)
-    admin_commands = [
-        ("start", "بدء المحادثة مع البوت"),
-        ("help", "عرض المساعدة"),
-        ("release", "تحرير مستخدم من المشرف الحالي")
-    ]
-    
     # Set commands for regular users (globally)
     await application.bot.set_my_commands(user_commands)
-    
-    # Set admin-specific commands for each admin
-    for admin_id in ADMIN_IDS:
-        try:
-            await application.bot.set_my_commands(
-                admin_commands,
-                scope=telegram.BotCommandScopeChat(chat_id=admin_id)
-            )
-        except Exception as e:
-            logger.error(f"Failed to set admin commands for admin {admin_id}: {e}")
     
     logger.info("Bot commands have been set")
 
@@ -405,11 +427,19 @@ def main() -> None:
 
     # Add command handlers
     application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("release", release_user_command))
+    application.add_handler(CommandHandler("stats", stats_command))
     
-    # Add message handlers
-    application.add_handler(MessageHandler(filters.REPLY & filters.TEXT & ~filters.COMMAND & filters.User(ADMIN_IDS), handle_admin_reply))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.ChatType.CHANNEL & ~filters.ChatType.GROUP, handle_user_message))
+    # Add message handlers for admin group
+    application.add_handler(MessageHandler(
+        filters.REPLY & ~filters.COMMAND & filters.Chat(chat_id=ADMIN_GROUP_ID),
+        handle_admin_group_reply
+    ))
+    
+    # Add message handlers for user messages (all types)
+    application.add_handler(MessageHandler(
+        ~filters.COMMAND & ~filters.ChatType.CHANNEL & ~filters.ChatType.GROUP,
+        handle_user_message
+    ))
 
     # Setup bot on startup
     application.post_init = setup_commands
@@ -422,6 +452,7 @@ if __name__ == "__main__":
     if not BOT_TOKEN:
         logger.error("BOT_TOKEN environment variable is not set!")
         exit(1)
-    if not ADMIN_IDS:
-        logger.warning("ADMIN_IDS environment variable is not set or empty. No admins configured!")
+    if not ADMIN_GROUP_ID or ADMIN_GROUP_ID == 0:
+        logger.error("ADMIN_GROUP_ID environment variable is not set or invalid!")
+        exit(1)
     main() 
