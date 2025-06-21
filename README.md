@@ -8,9 +8,44 @@ A Telegram bot that serves as a live support assistant for "THE LAST DANCE" cour
 - Allows admins to reply directly to users
 - Welcome message with user's first name
 - Inline keyboard buttons for important links
-- In-memory storage (no database required)
+- Smart handling system that assigns users to specific admins
+- Admin release command to free users when admins are unavailable
+- Keep-alive functionality to maintain the bot running on Replit
 
-## Setup Instructions
+## Replit Deployment Instructions
+
+1. Create a new Replit project and import this repository
+2. Set up environment variables in Replit Secrets:
+   - Click on "Tools" in the left sidebar
+   - Select "Secrets"
+   - Add the following secrets:
+     - `BOT_TOKEN`: Your Telegram bot token obtained from [@BotFather](https://t.me/BotFather)
+     - `ADMIN_IDS`: Comma-separated list of admin user IDs (e.g., `123456789,987654321`)
+
+3. Update the URLs in `bot.py` for the inline keyboard buttons:
+   - "جروب المناقشة" - Discussion group URL
+   - "القناة الرئيسية" - Main channel URL
+   - "بوت الملفات" - Files bot URL
+   - "الموقع الإلكتروني" - Website URL
+
+4. Run the bot on Replit:
+   - The bot should automatically start when you click "Run"
+   - If not, run `python main.py` in the Replit shell
+
+## UptimeRobot Configuration
+
+To keep your bot running 24/7 on Replit:
+
+1. Create an account on [UptimeRobot](https://uptimerobot.com/) if you don't have one
+2. Add a new monitor:
+   - Select "HTTP(s)" as the monitor type
+   - Enter your Replit URL + "/ping" as the URL (e.g., `https://your-repl-name.your-username.repl.co/ping`)
+   - Set the monitoring interval to 5 minutes
+   - Save the monitor
+
+3. Your bot should now stay awake as UptimeRobot will ping it every 5 minutes
+
+## Local Setup Instructions
 
 1. Clone this repository
 2. Install dependencies:
@@ -22,18 +57,9 @@ A Telegram bot that serves as a live support assistant for "THE LAST DANCE" cour
    BOT_TOKEN=your_telegram_bot_token_here
    ADMIN_IDS=123456789,987654321
    ```
-   Replace `your_telegram_bot_token_here` with your actual Telegram bot token obtained from [@BotFather](https://t.me/BotFather)
-   Replace `123456789,987654321` with comma-separated list of admin user IDs
-
-4. Update the URLs in `bot.py` for the inline keyboard buttons:
-   - "جروب المناقشة" - Discussion group URL
-   - "القناة الرئيسية" - Main channel URL
-   - "بوت الملفات" - Files bot URL
-   - "الموقع الإلكتروني" - Website URL
-
-5. Run the bot:
+4. Run the bot:
    ```
-   python bot.py
+   python main.py
    ```
 
 ## Usage
@@ -41,6 +67,8 @@ A Telegram bot that serves as a live support assistant for "THE LAST DANCE" cour
 - Users can start the bot with `/start` to see the welcome message and buttons
 - Any message sent by users will be forwarded to all admins
 - Admins can reply to forwarded messages to respond to the original user
+- The first admin to reply to a user becomes that user's handler
+- Admins can release a user with `/release user_id` if they're unavailable
 
 ## Customization
 

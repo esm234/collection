@@ -1,12 +1,33 @@
 run = "python main.py"
+language = "python3"
 entrypoint = "main.py"
-
-[env]
-BOT_TOKEN = "$BOT_TOKEN"
-ADMIN_IDS = "$ADMIN_IDS"
+hidden = [".env", ".gitignore", "venv", ".config", "**/__pycache__", "**/.mypy_cache", "**/*.pyc"]
 
 [nix]
-channel = "stable-22_11"
+channel = "stable-23_05"
+
+[env]
+PYTHONPATH = "${PYTHONPATH}:${REPL_HOME}"
+PYTHONUNBUFFERED = "1"
+
+[packager]
+language = "python3"
+ignoredPackages = ["unit_tests"]
+
+[packager.features]
+enabledForHosting = true
+packageSearch = true
+guessImports = true
+
+[languages]
+
+[languages.python3]
+pattern = "**/*.py"
+syntax = "python"
+
+[languages.python3.languageServer]
+start = "pylsp"
 
 [deployment]
-run = ["python", "main.py"] 
+run = ["sh", "-c", "python main.py"]
+deploymentTarget = "cloudrun" 
