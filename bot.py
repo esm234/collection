@@ -3,9 +3,9 @@
 
 import os
 import logging
-from typing import Dict, List, Union, Tuple
+from typing import Dict, List, Union, Tuple, Set
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, CallbackQuery
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -13,6 +13,7 @@ from telegram.ext import (
     CallbackContext,
     filters,
     ConversationHandler,
+    CallbackQueryHandler,
 )
 from keep_alive import keep_alive
 
@@ -54,6 +55,14 @@ admin_messages_to_users: Dict[int, int] = {}
 # Maps: user_id -> message_type
 user_message_type: Dict[int, str] = {}
 
+# Maps: admin_id -> set of filtered message types
+admin_filters: Dict[int, Set[str]] = {}
+
+# Toggle menu callbacks
+TOGGLE_MENU = "toggle_menu"
+TOGGLE_FILTER = "toggle_filter_"
+END_CONVERSATION = "end_conversation"
+
 async def start_command(update: Update, context: CallbackContext) -> int:
     """Send welcome message when the command /start is issued."""
     user = update.effective_user
@@ -85,37 +94,51 @@ async def start_command(update: Update, context: CallbackContext) -> int:
     # Create reply keyboard for message type selection
     reply_keyboard = [
         ['استفسار', 'اقتراح'],
-        ['ملاحظة', 'أخرى']
+        ['ملاحظة', 'أخرى'],
+        ['إنهاء المحادثة ❌']
     ]
     markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
     
     # Send welcome message with inline buttons for links
     await update.message.reply_text(welcome_message, reply_markup=markup)
     
+    # Send the links separately
+    await update.message.reply_text("روابط مهمة:", reply_markup=inline_markup)
+    
     return CHOOSING_MESSAGE_TYPE
 
 async def message_type_selected(update: Update, context: CallbackContext) -> int:
     """Handle the message type selection."""
     user = update.effective_user
-    message_type = update.message.text
+    message_text = update.message.text
     
-    if message_type not in MESSAGE_TYPES:
+    # Check if user wants to end the conversation
+    if message_text == "إنهاء المحادثة ❌":
+        await update.message.reply_text(
+            "تم إنهاء المحادثة. يمكنك دائماً بدء محادثة جديدة باستخدام الأمر /start",
+            reply_markup=ReplyKeyboardMarkup([['/start']], one_time_keyboard=True, resize_keyboard=True)
+        )
+        return ConversationHandler.END
+    
+    if message_text not in MESSAGE_TYPES:
         await update.message.reply_text(
             "الرجاء اختيار نوع الرسالة من القائمة.",
             reply_markup=ReplyKeyboardMarkup([
                 ['استفسار', 'اقتراح'],
-                ['ملاحظة', 'أخرى']
+                ['ملاحظة', 'أخرى'],
+                ['إنهاء المحادثة ❌']
             ], one_time_keyboard=True, resize_keyboard=True)
         )
         return CHOOSING_MESSAGE_TYPE
     
     # Store the selected message type for this user
-    user_message_type[user.id] = message_type
+    user_message_type[user.id] = message_text
     
     # Ask for the actual message
     await update.message.reply_text(
-        f"تم اختيار: {MESSAGE_TYPES[message_type]}\n\n"
-        "الرجاء كتابة رسالتك الآن:"
+        f"تم اختيار: {MESSAGE_TYPES[message_text]}\n\n"
+        "الرجاء كتابة رسالتك الآن:",
+        reply_markup=ReplyKeyboardMarkup([['إلغاء وعودة للقائمة الرئيسية']], resize_keyboard=True)
     )
     
     return TYPING_MESSAGE
@@ -125,6 +148,10 @@ async def handle_user_message(update: Update, context: CallbackContext) -> int:
     user = update.effective_user
     user_id = user.id
     message = update.message
+    
+    # Check if user wants to cancel and return to main menu
+    if message.text == "إلغاء وعودة للقائمة الرئيسية":
+        return await start_command(update, context)
     
     # Check if this is a reply to an admin's message
     if message.reply_to_message:
@@ -168,8 +195,13 @@ async def handle_user_message(update: Update, context: CallbackContext) -> int:
     user_info += f"📝 Type: {message_type}\n\n"
     user_info += "📄 Message:"
     
-    # Forward to all admins
+    # Forward to all admins (respecting their filters)
     for admin_id in ADMIN_IDS:
+        # Check if this admin has filters and if the message type is filtered out
+        if admin_id in admin_filters and message_type in admin_filters[admin_id]:
+            logger.info(f"Skipping message of type {message_type} for admin {admin_id} due to filter")
+            continue
+            
         try:
             # First send user info
             await context.bot.send_message(chat_id=admin_id, text=user_info)
@@ -195,10 +227,18 @@ async def handle_user_message(update: Update, context: CallbackContext) -> int:
     }
     
     confirmation = confirmation_messages.get(message_type, "تم استلام رسالتك وسيتم الرد عليك في أقرب وقت ✅")
-    await message.reply_text(confirmation)
     
-    # Reset the conversation
-    return ConversationHandler.END
+    # Send confirmation with option to send another message
+    reply_keyboard = [
+        ['إرسال رسالة أخرى'],
+        ['إنهاء المحادثة ❌']
+    ]
+    markup = ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
+    
+    await message.reply_text(confirmation, reply_markup=markup)
+    
+    # Reset the conversation but stay in the choosing state for potential new messages
+    return CHOOSING_MESSAGE_TYPE
 
 async def handle_direct_message(update: Update, context: CallbackContext) -> None:
     """Handle direct messages outside the conversation flow."""
@@ -209,6 +249,19 @@ async def handle_direct_message(update: Update, context: CallbackContext) -> Non
     user = update.effective_user
     user_id = user.id
     message = update.message
+    
+    # Check if user is requesting to start a new conversation
+    if message.text == "إرسال رسالة أخرى":
+        await start_command(update, context)
+        return
+    
+    # Check if user wants to end the conversation
+    if message.text == "إنهاء المحادثة ❌":
+        await update.message.reply_text(
+            "تم إنهاء المحادثة. يمكنك دائماً بدء محادثة جديدة باستخدام الأمر /start",
+            reply_markup=ReplyKeyboardMarkup([['/start']], one_time_keyboard=True, resize_keyboard=True)
+        )
+        return
     
     # Check if this is a reply to an admin's message
     if message.reply_to_message:
@@ -266,8 +319,18 @@ async def handle_direct_message(update: Update, context: CallbackContext) -> Non
         except Exception as e:
             logger.error(f"Failed to forward message to admin {admin_id}: {e}")
     
+    # Suggest using /start for a better experience
+    reply_keyboard = [
+        ['/start']
+    ]
+    markup = ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True, one_time_keyboard=True)
+    
     # Confirm receipt to the user
-    await message.reply_text("تم استلام رسالتك وسيتم الرد عليك في أقرب وقت ✅")
+    await message.reply_text(
+        "تم استلام رسالتك وسيتم الرد عليك في أقرب وقت ✅\n\n"
+        "لتجربة أفضل، يمكنك استخدام الأمر /start لاختيار نوع الرسالة",
+        reply_markup=markup
+    )
 
 async def handle_admin_reply(update: Update, context: CallbackContext) -> None:
     """Handle replies from admins to forward them back to the original user."""
@@ -310,6 +373,110 @@ async def handle_admin_reply(update: Update, context: CallbackContext) -> None:
     else:
         await update.message.reply_text("❌ لا يمكن العثور على المستخدم الأصلي لهذه الرسالة")
 
+async def admin_menu_command(update: Update, context: CallbackContext) -> None:
+    """Show admin menu with filter options."""
+    user_id = update.effective_user.id
+    
+    # Only admins can access this menu
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر متاح فقط للمشرفين.")
+        return
+    
+    # Get current filters for this admin
+    current_filters = admin_filters.get(user_id, set())
+    
+    # Create inline keyboard with toggle buttons
+    keyboard = []
+    
+    for msg_type in MESSAGE_TYPES:
+        # Check if this type is currently filtered
+        is_filtered = msg_type in current_filters
+        status = "❌" if is_filtered else "✅"
+        
+        keyboard.append([
+            InlineKeyboardButton(
+                f"{msg_type}: {status}",
+                callback_data=f"{TOGGLE_FILTER}{msg_type}"
+            )
+        ])
+    
+    # Add button to close menu
+    keyboard.append([InlineKeyboardButton("إغلاق القائمة", callback_data=END_CONVERSATION)])
+    
+    markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        "قائمة المشرف - تصفية الرسائل:\n\n"
+        "✅ = ستستلم هذه الرسائل\n"
+        "❌ = لن تستلم هذه الرسائل\n\n"
+        "اضغط على نوع الرسالة لتغيير الإعداد:",
+        reply_markup=markup
+    )
+
+async def button_callback(update: Update, context: CallbackContext) -> None:
+    """Handle button callbacks from inline keyboards."""
+    query = update.callback_query
+    user_id = query.from_user.id
+    
+    # Only admins can use these buttons
+    if user_id not in ADMIN_IDS:
+        await query.answer("هذه الأزرار متاحة فقط للمشرفين.")
+        return
+    
+    # Get the callback data
+    callback_data = query.data
+    
+    # Handle end conversation
+    if callback_data == END_CONVERSATION:
+        await query.edit_message_text("تم إغلاق القائمة.")
+        return
+    
+    # Handle filter toggle
+    if callback_data.startswith(TOGGLE_FILTER):
+        # Extract the message type
+        msg_type = callback_data[len(TOGGLE_FILTER):]
+        
+        # Initialize filters for this admin if not already done
+        if user_id not in admin_filters:
+            admin_filters[user_id] = set()
+        
+        # Toggle the filter
+        if msg_type in admin_filters[user_id]:
+            admin_filters[user_id].remove(msg_type)
+            await query.answer(f"ستستلم رسائل من نوع: {msg_type}")
+        else:
+            admin_filters[user_id].add(msg_type)
+            await query.answer(f"لن تستلم رسائل من نوع: {msg_type}")
+        
+        # Update the keyboard
+        current_filters = admin_filters.get(user_id, set())
+        keyboard = []
+        
+        for type_name in MESSAGE_TYPES:
+            # Check if this type is currently filtered
+            is_filtered = type_name in current_filters
+            status = "❌" if is_filtered else "✅"
+            
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"{type_name}: {status}",
+                    callback_data=f"{TOGGLE_FILTER}{type_name}"
+                )
+            ])
+        
+        # Add button to close menu
+        keyboard.append([InlineKeyboardButton("إغلاق القائمة", callback_data=END_CONVERSATION)])
+        
+        markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            "قائمة المشرف - تصفية الرسائل:\n\n"
+            "✅ = ستستلم هذه الرسائل\n"
+            "❌ = لن تستلم هذه الرسائل\n\n"
+            "اضغط على نوع الرسالة لتغيير الإعداد:",
+            reply_markup=markup
+        )
+
 def main() -> None:
     """Start the bot."""
     # Keep the bot alive
@@ -333,6 +500,12 @@ def main() -> None:
     )
     
     application.add_handler(conv_handler)
+    
+    # Add admin menu command
+    application.add_handler(CommandHandler("admin", admin_menu_command))
+    
+    # Add callback query handler for inline buttons
+    application.add_handler(CallbackQueryHandler(button_callback))
     
     # Add message handlers for admin replies and direct messages
     application.add_handler(MessageHandler(filters.REPLY & filters.TEXT & ~filters.COMMAND & filters.User(ADMIN_IDS), handle_admin_reply))
