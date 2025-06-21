@@ -14,6 +14,7 @@ from telegram.ext import (
     filters,
 )
 from keep_alive import keep_alive
+import telegram
 
 # Enable logging
 logging.basicConfig(
@@ -49,6 +50,9 @@ user_to_admin_messages: Dict[int, int] = {}
 
 # Maps: admin_message_id -> user_message_id (for reply tracking)
 admin_to_user_messages: Dict[int, int] = {}
+
+# Maps: admin_id -> admin name
+admin_names: Dict[int, str] = {}
 
 async def set_menu_button(application: Application) -> None:
     """Set the menu button to show commands."""
@@ -229,6 +233,10 @@ async def handle_admin_reply(update: Update, context: CallbackContext) -> None:
     if admin_id not in ADMIN_IDS:
         return
     
+    # Store admin name for future reference
+    admin_name = update.effective_user.first_name
+    admin_names[admin_id] = admin_name
+    
     # Check if this is a reply to a message
     if not update.message.reply_to_message:
         return
@@ -265,8 +273,6 @@ async def handle_admin_reply(update: Update, context: CallbackContext) -> None:
         return
     
     try:
-        admin_name = update.effective_user.first_name
-        
         # Forward the admin's reply to the original user
         if original_msg_id:
             # Reply directly to the user's original message without any prefix text
@@ -331,6 +337,18 @@ async def release_user_command(update: Update, context: CallbackContext) -> None
         
         # Check if the requesting admin is the handler
         if handler_admin_id == admin_id:
+            # Get admin name
+            admin_name = admin_names.get(admin_id, "المشرف")
+            
+            # Notify the user that they are being released
+            try:
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=f"⚠️ المشرف {admin_name} غير متوفر حالياً. سيتم تحويلك لمشرف آخر في أقرب وقت."
+                )
+            except Exception as e:
+                logger.error(f"Failed to notify user {user_id} about release: {e}")
+            
             # Remove the handler
             del user_handlers[user_id]
             
@@ -346,20 +364,39 @@ async def release_user_command(update: Update, context: CallbackContext) -> None
             
             await update.message.reply_text(f"✅ تم تحرير المستخدم {user_id} وأصبح متاحاً للرد من قبل أي مشرف")
         else:
-            admin_name = "مشرف آخر"
+            admin_name = admin_names.get(handler_admin_id, "مشرف آخر")
             await update.message.reply_text(f"❌ لا يمكنك تحرير هذا المستخدم لأنه يتم التعامل معه حالياً بواسطة {admin_name}")
     else:
         await update.message.reply_text(f"ℹ️ المستخدم {user_id} غير مخصص لأي مشرف حالياً")
 
 async def setup_commands(application: Application) -> None:
     """Set bot commands that will appear in the menu."""
-    commands = [
+    # Commands for regular users
+    user_commands = [
+        ("start", "بدء المحادثة مع البوت"),
+        ("help", "عرض المساعدة"),
+    ]
+    
+    # Commands for admin users (including release command)
+    admin_commands = [
         ("start", "بدء المحادثة مع البوت"),
         ("help", "عرض المساعدة"),
         ("release", "تحرير مستخدم من المشرف الحالي")
     ]
     
-    await application.bot.set_my_commands(commands)
+    # Set commands for regular users (globally)
+    await application.bot.set_my_commands(user_commands)
+    
+    # Set admin-specific commands for each admin
+    for admin_id in ADMIN_IDS:
+        try:
+            await application.bot.set_my_commands(
+                admin_commands,
+                scope=telegram.BotCommandScopeChat(chat_id=admin_id)
+            )
+        except Exception as e:
+            logger.error(f"Failed to set admin commands for admin {admin_id}: {e}")
+    
     logger.info("Bot commands have been set")
 
 def main() -> None:
@@ -391,4 +428,4 @@ if __name__ == "__main__":
         exit(1)
     if not ADMIN_IDS:
         logger.warning("ADMIN_IDS environment variable is not set or empty. No admins configured!")
-    main()
+    main() 
