@@ -66,7 +66,21 @@ END_CONVERSATION = "end_conversation"
 async def start_command(update: Update, context: CallbackContext) -> int:
     """Send welcome message when the command /start is issued."""
     user = update.effective_user
+    user_id = user.id
     first_name = user.first_name
+    
+    # If user is admin, show admin commands
+    if user_id in ADMIN_IDS:
+        keyboard = [
+            ['/admin - قائمة تصفية الرسائل']
+        ]
+        markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await update.message.reply_text(
+            f"مرحباً {first_name}، أنت مشرف في بوت الدعم الفني.\n\n"
+            "يمكنك استخدام الأمر /admin للوصول إلى قائمة تصفية الرسائل.",
+            reply_markup=markup
+        )
+        return ConversationHandler.END
     
     # Create inline keyboard with buttons for links
     inline_keyboard = [
@@ -110,6 +124,12 @@ async def start_command(update: Update, context: CallbackContext) -> int:
 async def message_type_selected(update: Update, context: CallbackContext) -> int:
     """Handle the message type selection."""
     user = update.effective_user
+    user_id = user.id
+    
+    # If user is admin, don't process this as a message type selection
+    if user_id in ADMIN_IDS:
+        return ConversationHandler.END
+        
     message_text = update.message.text
     
     # Check if user wants to end the conversation
@@ -132,7 +152,7 @@ async def message_type_selected(update: Update, context: CallbackContext) -> int
         return CHOOSING_MESSAGE_TYPE
     
     # Store the selected message type for this user
-    user_message_type[user.id] = message_text
+    user_message_type[user_id] = message_text
     
     # Ask for the actual message
     await update.message.reply_text(
@@ -148,6 +168,10 @@ async def handle_user_message(update: Update, context: CallbackContext) -> int:
     user = update.effective_user
     user_id = user.id
     message = update.message
+    
+    # If user is admin, don't process this as a user message
+    if user_id in ADMIN_IDS:
+        return ConversationHandler.END
     
     # Check if user wants to cancel and return to main menu
     if message.text == "إلغاء وعودة للقائمة الرئيسية":
@@ -242,13 +266,16 @@ async def handle_user_message(update: Update, context: CallbackContext) -> int:
 
 async def handle_direct_message(update: Update, context: CallbackContext) -> None:
     """Handle direct messages outside the conversation flow."""
-    # Skip messages from admins
-    if update.effective_user.id in ADMIN_IDS:
-        return
-    
     user = update.effective_user
     user_id = user.id
     message = update.message
+    
+    # Special handling for admin messages
+    if user_id in ADMIN_IDS:
+        # Check if this is a reply to a forwarded message
+        if message.reply_to_message:
+            await handle_admin_reply(update, context)
+        return
     
     # Check if user is requesting to start a new conversation
     if message.text == "إرسال رسالة أخرى":
@@ -490,10 +517,10 @@ def main() -> None:
         entry_points=[CommandHandler("start", start_command)],
         states={
             CHOOSING_MESSAGE_TYPE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_type_selected)
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.User(ADMIN_IDS), message_type_selected)
             ],
             TYPING_MESSAGE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_message)
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.User(ADMIN_IDS), handle_user_message)
             ],
         },
         fallbacks=[CommandHandler("start", start_command)],
