@@ -1,0 +1,12 @@
+run = "python main.py"
+entrypoint = "main.py"
+
+[env]
+BOT_TOKEN = "$BOT_TOKEN"
+ADMIN_IDS = "$ADMIN_IDS"
+
+[nix]
+channel = "stable-22_11"
+
+[deployment]
+run = ["python", "main.py"] 
