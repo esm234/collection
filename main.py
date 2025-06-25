@@ -49,11 +49,20 @@ def ping():
     """Endpoint specifically for UptimeRobot monitoring"""
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     logger.info(f"Health check ping at {current_time}")
+
+    # Check bot thread status
+    bot_status = "unknown"
+    if 'bot_thread' in globals() and bot_thread:
+        bot_status = "running" if bot_thread.is_alive() else "stopped"
+    else:
+        bot_status = "not_started"
+
     return jsonify({
         "status": "ok",
         "message": "pong",
         "timestamp": current_time,
-        "bot_running": bot_thread.is_alive() if 'bot_thread' in globals() else False
+        "bot_thread_status": bot_status,
+        "server_running": True
     })
 
 @app.route('/status')
@@ -71,22 +80,31 @@ def status():
         "replit_url": f"https://{os.environ.get('REPL_SLUG', 'unknown')}.{os.environ.get('REPL_OWNER', 'unknown')}.repl.co" if os.environ.get('REPL_SLUG') else None
     })
 
-# Start bot in a separate thread
+# Start bot in a separate thread with proper async handling
 def run_bot():
     try:
         logger.info("Importing bot module")
         import bot
+        import asyncio
         logger.info("Bot module imported successfully")
+
+        # Create new event loop for this thread
+        logger.info("Setting up event loop for bot thread")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
         # Directly call the main function from bot.py
         logger.info("Starting bot.main()")
         bot.main()
     except ImportError as e:
         logger.critical(f"Failed to import bot module: {e}")
-        sys.exit(1)
+        # Don't exit, just log the error
+        return
     except Exception as e:
         logger.critical(f"Unexpected error during import or execution: {e}")
-        sys.exit(1)
+        logger.exception("Full traceback:")
+        # Don't exit, just log the error
+        return
 
 # Global variable for bot thread
 bot_thread = None

@@ -1,4 +1,4 @@
-run = "bash replit_start.sh"
+run = "python main_simple.py"
 language = "python3"
 entrypoint = "main.py"
 hidden = [".env", ".gitignore", "venv", ".config", "**/__pycache__", "**/.mypy_cache", "**/*.pyc"]
