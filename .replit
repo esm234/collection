@@ -1,4 +1,4 @@
-run = "python main_simple.py"
+run = "python app.py"
 language = "python3"
 entrypoint = "main.py"
 hidden = [".env", ".gitignore", "venv", ".config", "**/__pycache__", "**/.mypy_cache", "**/*.pyc"]
