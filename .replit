@@ -1,9 +1,9 @@
-run = "python main.py"
+run = "bash replit_start.sh"
 language = "python3"
 entrypoint = "main.py"
 hidden = [".env", ".gitignore", "venv", ".config", "**/__pycache__", "**/.mypy_cache", "**/*.pyc"]
-onBoot = "python main.py"
-persistentStorage = [".data"]
+onBoot = "bash replit_start.sh"
+persistentStorage = [".data", "users_data.json", "*.log"]
 
 [nix]
 channel = "stable-23_05"
@@ -13,6 +13,7 @@ PYTHONPATH = "${PYTHONPATH}:${REPL_HOME}"
 PYTHONUNBUFFERED = "1"
 VIRTUAL_ENV = "${REPL_HOME}/venv"
 PATH = "${VIRTUAL_ENV}/bin:${PATH}"
+REPLIT_HOSTING = "1"
 
 [packager]
 language = "python3"
@@ -47,4 +48,4 @@ requiredFiles = [".replit", "replit.nix", ".config"]
 
 [auth]
 pageEnabled = false
-buttonEnabled = false 
+buttonEnabled = false
