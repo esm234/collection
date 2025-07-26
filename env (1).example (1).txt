@@ -1,0 +1,11 @@
+# Telegram Bot Configuration
+# Get your bot token from @BotFather on Telegram
+BOT_TOKEN=your_telegram_bot_token_here
+
+# Admin Group Configuration
+# Create a group, add your bot as admin, then get the group ID
+# You can use @userinfobot to get the group ID (it will be negative)
+ADMIN_GROUP_ID=-1001234567890
+
+# Port Configuration (automatically set by Render)
+PORT=8080
