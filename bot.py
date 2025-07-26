@@ -5,7 +5,7 @@ import os
 import logging
 from typing import Dict, List, Union, Tuple, Set
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MenuButtonCommands
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MenuButtonCommands, BotCommand
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -13,7 +13,6 @@ from telegram.ext import (
     CallbackContext,
     filters,
 )
-import telegram
 import json
 from datetime import datetime
 
@@ -71,10 +70,13 @@ active_users = load_users_data()
 
 async def set_menu_button(application: Application) -> None:
     """Set the menu button to show commands."""
-    await application.bot.set_chat_menu_button(
-        menu_button=MenuButtonCommands(type="commands")
-    )
-    logger.info("Menu button set to commands")
+    try:
+        await application.bot.set_chat_menu_button(
+            menu_button=MenuButtonCommands(type="commands")
+        )
+        logger.info("Menu button set to commands")
+    except Exception as e:
+        logger.error(f"Failed to set menu button: {e}")
 
 async def start_command(update: Update, context: CallbackContext) -> None:
     """Send welcome message when the command /start is issued."""
@@ -411,16 +413,16 @@ async def setup_commands(application: Application) -> None:
     """Set bot commands that will appear in the menu."""
     # Commands for regular users
     user_commands = [
-        ("start", "بدء المحادثة مع البوت"),
-        ("help", "عرض المساعدة"),
+        BotCommand("start", "بدء استخدام البوت"),
     ]
     
-    # Set commands for regular users (globally)
-    await application.bot.set_my_commands(user_commands)
-    
-    logger.info("Bot commands have been set")
+    try:
+        await application.bot.set_my_commands(user_commands)
+        logger.info("Bot commands set successfully")
+    except Exception as e:
+        logger.error(f"Failed to set bot commands: {e}")
 
-def main() -> None:
+def main():
     """Start the bot."""
     # Create the Application
     application = Application.builder().token(BOT_TOKEN).build()
@@ -443,10 +445,9 @@ def main() -> None:
 
     # Setup bot on startup
     application.post_init = setup_commands
-
     
     # Run the bot until the user presses Ctrl-C
-    application.run_webhook(listen="0.0.0.0", port=int(os.environ.get("PORT", "8080")), url_path=BOT_TOKEN, webhook_url=f"https://{os.environ.get("RENDER_EXTERNAL_HOSTNAME")}/{BOT_TOKEN}")
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     if not BOT_TOKEN:
@@ -455,4 +456,5 @@ if __name__ == "__main__":
     if not ADMIN_GROUP_ID or ADMIN_GROUP_ID == 0:
         logger.error("ADMIN_GROUP_ID environment variable is not set or invalid!")
         exit(1)
-    main() 
+    main()
+
