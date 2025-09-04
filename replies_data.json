@@ -1,0 +1,37 @@
+{
+  "2a017d0e-a22a-4939-bb66-8ea3f647ba9a": {
+    "user_id": 5926363823,
+    "user_message_id": 625,
+    "admin_message_id": 647
+  },
+  "950c83f2-c89d-4d45-a27b-d5c9fa5ff769": {
+    "user_id": 5926363823,
+    "user_message_id": 664,
+    "admin_message_id": 666
+  },
+  "6d48498a-a09c-47bf-9336-8b4fd314ea13": {
+    "user_id": 5926363823,
+    "user_message_id": 667,
+    "admin_message_id": 669,
+    "admin_replies": [
+      {
+        "admin_message_id": 670,
+        "user_reply_message_id": 671
+      },
+      {
+        "admin_message_id": 677,
+        "user_reply_message_id": 678
+      }
+    ],
+    "instruction_sent": true,
+    "admin_thread_message_ids": [
+      675,
+      681
+    ]
+  },
+  "0586eadc-317f-463a-a50c-81433e473057": {
+    "user_id": 5926363823,
+    "user_message_id": 707,
+    "admin_message_id": 709
+  }
+}

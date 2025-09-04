@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Optimized Telegram Bot for Replit Hosting
-This version runs the bot in the main thread to avoid async issues
+Telegram Question Collection Bot for Render Hosting
+Optimized for Render deployment with UptimeRobot monitoring
 """
 
 import os
@@ -21,7 +21,7 @@ logging.basicConfig(
         logging.FileHandler("bot.log")
     ]
 )
-logger = logging.getLogger("replit_bot")
+logger = logging.getLogger("telegram_bot")
 
 # Global status
 app_status = {
@@ -40,12 +40,13 @@ def create_web_server():
     def home():
         uptime = time.time() - app_status['start_time']
         return jsonify({
-            "status": "Telegram Bot Server",
+            "status": "بوت التجميعات - Question Collection Bot",
             "uptime_seconds": uptime,
             "uptime_formatted": f"{int(uptime // 3600)}h {int((uptime % 3600) // 60)}m {int(uptime % 60)}s",
             "bot_running": app_status['bot_running'],
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "environment": "Replit"
+            "environment": "Render",
+            "description": "Telegram bot for collecting Qiyas exam questions"
         })
     
     @app.route('/ping')
@@ -68,8 +69,10 @@ def create_web_server():
             "uptime": uptime,
             "bot_running": app_status['bot_running'],
             "last_error": app_status['last_error'],
-            "replit_url": f"https://{os.environ.get('REPL_SLUG')}.{os.environ.get('REPL_OWNER')}.repl.co" if os.environ.get('REPL_SLUG') else None,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "render_url": os.environ.get('RENDER_EXTERNAL_URL', 'Not available'),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "python_version": sys.version,
+            "environment": "Render"
         })
     
     return app
@@ -83,10 +86,10 @@ async def start_web_server():
         port = int(os.environ.get('PORT', 8080))
         logger.info(f"Starting web server on port {port}")
         
-        if os.environ.get('REPL_SLUG'):
-            url = f"https://{os.environ.get('REPL_SLUG')}.{os.environ.get('REPL_OWNER')}.repl.co"
-            logger.info(f"Bot URL: {url}")
-            logger.info(f"Health check: {url}/ping")
+        render_url = os.environ.get('RENDER_EXTERNAL_URL')
+        if render_url:
+            logger.info(f"Bot URL: {render_url}")
+            logger.info(f"Health check: {render_url}/ping")
         
         app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
     
@@ -104,7 +107,7 @@ async def run_telegram_bot():
         logger.info("Importing bot module...")
         import bot
         from telegram import Update
-        from telegram.ext import Application, CommandHandler, MessageHandler, filters
+        from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
         
         # Validate environment variables
         if not bot.BOT_TOKEN:
@@ -117,19 +120,49 @@ async def run_telegram_bot():
         # Create application
         application = Application.builder().token(bot.BOT_TOKEN).build()
         
-        # Add handlers
+        # Add command handlers
         application.add_handler(CommandHandler("start", bot.start_command))
+        application.add_handler(CommandHandler("help", bot.help_command))
         application.add_handler(CommandHandler("stats", bot.stats_command))
+        application.add_handler(CommandHandler("export", bot.export_command))
+        application.add_handler(CommandHandler("broadcast", bot.broadcast_command))
+        application.add_handler(CommandHandler("ban", bot.ban_command))
+        application.add_handler(CommandHandler("unban", bot.unban_command))
+        application.add_handler(CommandHandler("banned", bot.banned_list_command))
         
-        # Admin group handler
+        # Callback query handler for inline buttons
+        application.add_handler(CallbackQueryHandler(bot.button_handler))
+        
+        # Admin group message handlers
+        async def admin_group_handler(update, context):
+            if update.message and update.message.reply_to_message:
+                # Check if this is a reply to a broadcast initiation message
+                reply_text = update.message.reply_to_message.text or ""
+                if "وضع البث الجماعي" in reply_text or "عدد المستقبلين:" in reply_text:
+                    await bot.handle_broadcast_message(update, context)
+                else:
+                    await bot.handle_admin_reply(update, context)
+            else:
+                await bot.handle_broadcast_message(update, context)
+        
         application.add_handler(MessageHandler(
-            filters.REPLY & ~filters.COMMAND & filters.Chat(chat_id=bot.ADMIN_GROUP_ID),
-            bot.handle_admin_group_reply
+            filters.TEXT & filters.ChatType.GROUPS,
+            admin_group_handler
         ))
         
-        # User message handler  
         application.add_handler(MessageHandler(
-            ~filters.COMMAND & ~filters.ChatType.CHANNEL & ~filters.ChatType.GROUP,
+            (filters.PHOTO | filters.Document.ALL | filters.VOICE | filters.AUDIO | filters.VIDEO | filters.Sticker.ALL) & filters.ChatType.GROUPS,
+            admin_group_handler
+        ))
+        
+        # User message handlers (private chats)
+        application.add_handler(MessageHandler(
+            filters.TEXT & filters.ChatType.PRIVATE,
+            bot.handle_user_message
+        ))
+        
+        application.add_handler(MessageHandler(
+            (filters.PHOTO | filters.Document.ALL | filters.VOICE | filters.AUDIO | filters.VIDEO | filters.Sticker.ALL) & filters.ChatType.PRIVATE,
             bot.handle_user_message
         ))
         
@@ -161,9 +194,9 @@ def signal_handler(signum, frame):
 
 async def main():
     """Main application entry point"""
-    logger.info("🚀 Starting Telegram Bot for Replit")
+    logger.info("🚀 Starting بوت التجميعات - Question Collection Bot for Render")
     logger.info(f"Python: {sys.version}")
-    logger.info(f"Replit: {os.environ.get('REPL_SLUG', 'Not detected')}")
+    logger.info(f"Render URL: {os.environ.get('RENDER_EXTERNAL_URL', 'Not available')}")
     
     # Register signal handlers
     signal.signal(signal.SIGINT, signal_handler)

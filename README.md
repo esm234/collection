@@ -1,121 +1,102 @@
-# THE LAST DANCE - Telegram Support Bot
+# بوت التجميعات - Telegram Question Collection Bot
 
-A Telegram bot that serves as a live support assistant for "THE LAST DANCE" course.
+A comprehensive Telegram bot designed to collect exam questions (Qiyas) from students who have completed their tests. The bot facilitates organized question collection, two-way communication between admins and students, and provides broadcast capabilities.
 
 ## Features
 
-- Forwards user messages to an admin group chat
-- Allows admins to reply directly to users from the group
-- Support for various media types (text, photos, documents, videos, voice messages, audio, stickers)
-- Welcome message with user's first name
-- Inline keyboard buttons for important links
-- Simple and efficient message handling through a central admin group
-- Keep-alive functionality to maintain the bot running on Replit
+### 🎯 Core Features
+- **Multi-media Question Reception**: Accepts text, images, PDF files, voice messages, videos, and stickers
+- **Blue Button Menu**: Interactive interface with order list and instructions
+- **Two-way Reply System**: Seamless communication between admins and students
+- **Broadcast System**: Admin can send messages to all users (all media types)
+- **Statistics & Export**: Admin commands for data analysis
+- **Automated Notifications**: Milestone alerts every 50 questions
 
-## Replit Deployment Instructions
+### 📱 User Experience
+- **Command Menu**: Accessible via the blue button next to the input field
+- **Order Tracking**: Users can view all their submitted questions with timestamps
+- **Clear Instructions**: Detailed usage guide explaining the reply system
 
-1. Create a new Replit project and import this repository
-2. Set up environment variables in Replit Secrets:
-   - Click on "Tools" in the left sidebar
-   - Select "Secrets"
-   - Add the following secrets:
-     - `BOT_TOKEN`: Your Telegram bot token obtained from [@BotFather](https://t.me/BotFather)
-     - `ADMIN_GROUP_ID`: The ID of your admin group chat (e.g., `-1001234567890`)
-     - `ADMIN_IDS`: Comma-separated list of admin user IDs (e.g., `123456789,987654321`)
+### 👨‍💼 Admin Features
+- `/stats` - View question statistics
+- `/export` - Download all JSON data files (questions, replies, users, banned users)
+- `/broadcast` - Start broadcast mode for announcements
+- `/ban <user_id> [reason]` - Ban a user with optional reason
+- `/unban <user_id>` - Unban a user
+- `/banned` - Show list of banned users
+- **Question Management**: Detailed user info with each question
+- **Reply System**: Direct communication with students
+- **User Management**: Ban/unban system with detailed tracking
 
-3. Update the URLs in `bot.py` for the inline keyboard buttons:
-   - "جروب المناقشة" - Discussion group URL
-   - "القناة الرئيسية" - Main channel URL
-   - "بوت الملفات" - Files bot URL
-   - "الموقع الإلكتروني" - Website URL
-
-4. Run the bot on Replit:
-   - The bot should automatically start when you click "Run"
-   - If not, run `python main.py` in the Replit shell
-
-## UptimeRobot Configuration
-
-To keep your bot running 24/7 on Replit:
-
-1. Create an account on [UptimeRobot](https://uptimerobot.com/) if you don't have one
-2. Add a new monitor:
-   - Select "HTTP(s)" as the monitor type
-   - Enter your Replit URL + "/ping" as the URL (e.g., `https://your-repl-name.your-username.repl.co/ping`)
-   - Set the monitoring interval to 5 minutes
-   - Save the monitor
-
-3. Your bot should now stay awake as UptimeRobot will ping it every 5 minutes
-
-## Local Setup Instructions
+## Installation
 
 1. Clone this repository
-2. Install dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-3. Create a `.env` file in the project root with the following content:
-   ```
-   BOT_TOKEN=your_telegram_bot_token_here
-   ADMIN_GROUP_ID=-1001234567890
-   ADMIN_IDS=123456789,987654321
-   ```
-4. Run the bot:
-   ```
-   python main.py
-   ```
+2. Install dependencies: `pip install -r requirements.txt`
+3. Set up environment variables:
+   - `BOT_TOKEN`: Your Telegram bot token from @BotFather
+   - `ADMIN_GROUP_ID`: ID of your admin group for question management
+4. Run the bot: `python main.py`
 
 ## Usage
 
-- Users can start the bot with `/start` to see the welcome message and buttons
-- Any message sent by users will be forwarded to the admin group chat
-- Admins can reply to forwarded messages in the group to respond to the original user
-- The bot will handle the conversation flow between users and admins
+### For Students
+1. Start the bot with `/start`
+2. Send questions in any format (text, images, PDF, voice, video)
+3. Get confirmation and track your questions via the blue button menu
+4. Receive and respond to admin replies
 
-## How to Setup the Admin Group
+### For Admins
+1. Add the bot to your admin group
+2. Use `/broadcast` to send announcements to all users
+3. Reply to questions in the group to communicate with students
+4. Use `/stats` and `/export` for data management
 
-1. Create a new group in Telegram
-2. Add your bot to the group
-3. Make the bot an admin in the group (to read all messages)
-4. Get the group ID by:
-   - Sending a message to the group
-   - Forwarding that message to [@getidsbot](https://t.me/getidsbot)
-   - Look for the "Forwarded from chat" ID (will be negative, like `-1001234567890`)
-5. Use this ID as your `ADMIN_GROUP_ID` environment variable
+## Architecture
 
-## Customization
+- **Language**: Python 3.11
+- **Framework**: python-telegram-bot library
+- **Storage**: JSON files (questions_data.json, replies_data.json)
+- **Deployment**: Compatible with cloud platforms
 
-You can customize the welcome message and other texts in the `bot.py` file.
+## Environment Variables
 
-## Deployment on Render.com
+Create a `.env` file with the following variables:
 
-This bot is configured for deployment on Render.com. Follow these steps to deploy:
+```
+BOT_TOKEN=your_bot_token_here
+ADMIN_GROUP_ID=your_admin_group_id_here
+```
 
-1. Create a new account on [Render.com](https://render.com/) if you don't have one
-2. Connect your GitHub repository to Render
-3. Create a new Web Service and select your repository
-4. Use the following settings:
-   - **Environment**: Python
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `gunicorn -w 1 main:app`
-5. Add the following environment variables:
-   - `BOT_TOKEN`: Your Telegram bot token from BotFather
-   - `ADMIN_GROUP_ID`: Your admin group chat ID
-   - `ADMIN_IDS`: Comma-separated list of admin user IDs
+## Data Storage
 
-The bot will automatically start and stay running without needing external ping services.
+The bot stores data in JSON files:
+- `questions_data.json`: All submitted questions with metadata
+- `replies_data.json`: Reply tracking and conversation threads
+- `users_data.json`: User activity and statistics
+- `banned_users.json`: Banned users with ban details and reasons
+
+## Deployment
+
+The bot is designed to work on various platforms including:
+- Local development
+- Replit
+- Heroku
+- VPS/Cloud servers
 
 ## Commands
 
-- `/start` - Start the bot and see welcome message
+### User Commands
+- `/start` - Start using the bot and see welcome message
+- `/help` - Show help information
 
-## How It Works
+### Admin Commands (Admin Group Only)
+- `/stats` - View question statistics and user counts
+- `/export` - Download all data files (questions, replies, users, banned users)
+- `/broadcast` - Start broadcast mode to send messages to all users
+- `/ban <user_id> [reason]` - Ban a user with optional reason
+- `/unban <user_id>` - Unban a user
+- `/banned` - Show list of banned users with details
 
-1. Users send messages to the bot (text or media)
-2. Messages are forwarded to the admin group chat with user information
-3. When an admin replies to a message in the group, the reply is sent to the corresponding user
-4. The bot maintains the conversation flow between users and admins
-5. Media messages (photos, documents, videos, etc.) are properly forwarded in both directions
+## Support
 
-## License
-
-MIT 
+For support or questions, please contact the development team.
