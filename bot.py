@@ -282,7 +282,41 @@ async def button_handler(update: Update, context: CallbackContext) -> None:
     
     elif query.data == "main_menu":
         # Return to main menu
-        await start_command(update, context)
+        user = query.from_user
+        if not user:
+            return
+        
+        # Create inline keyboard with instructions and orders list
+        keyboard = [
+            [InlineKeyboardButton("📋 قائمة الطلبات", callback_data="orders_list")],
+            [InlineKeyboardButton("ℹ️ تعليمات الاستخدام", callback_data="instructions")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        user_name = user.first_name or "المستخدم"
+        welcome_message = f"""
+🎓 أهلاً وسهلاً {user_name}!
+
+مرحباً بك في **بوت التجميعات** 📚
+
+هذا البوت مخصص لتجميع أسئلة اختبار القدرات (قياس) من الطلاب اللي خلصوا الامتحان.
+
+📤 **يمكنك إرسال:**
+• النصوص
+• الصور
+• ملفات PDF
+• الرسائل الصوتية
+
+✅ سيتم استلام جميع رسائلك وتوجيهها للفريق المختص لمراجعتها وتنظيمها.
+
+استخدم الأزرار أدناه للمزيد من المعلومات:
+"""
+        
+        await query.edit_message_text(
+            welcome_message,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.MARKDOWN
+        )
 
 async def stats_command(update: Update, context: CallbackContext) -> None:
     """Show bot statistics."""
