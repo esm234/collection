@@ -176,7 +176,19 @@ async def run_telegram_bot():
         logger.info("Starting bot polling...")
         
         # Start polling
-        await application.run_polling(allowed_updates=Update.ALL_TYPES)
+        await application.initialize()
+        await application.start()
+        await application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+        
+        # Keep the bot running
+        try:
+            while True:
+                await asyncio.sleep(1)
+        except KeyboardInterrupt:
+            logger.info("Bot stopped by user")
+        finally:
+            await application.stop()
+            await application.shutdown()
         
     except Exception as e:
         error_msg = f"Bot error: {str(e)}"
