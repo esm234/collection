@@ -12,3 +12,4 @@ services:
         sync: false
     healthCheckPath: /ping
     autoDeploy: true
+    runtime: python-3.11

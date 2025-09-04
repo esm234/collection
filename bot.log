@@ -1,0 +1,104 @@
+2025-09-04 21:22:39,833 - telegram_bot - INFO - Python: 3.13.5 (tags/v3.13.5:6cb20a2, Jun 11 2025, 16:15:46) [MSC v.1943 64 bit (AMD64)]
+2025-09-04 21:22:39,833 - telegram_bot - INFO - Render URL: Not available
+2025-09-04 21:22:39,834 - telegram_bot - INFO - Web server started in background
+2025-09-04 21:22:41,840 - telegram_bot - INFO - Importing bot module...
+2025-09-04 21:22:42,193 - telegram_bot - INFO - Creating bot application...
+2025-09-04 21:22:42,837 - telegram_bot - INFO - Starting bot polling...
+2025-09-04 21:22:42,874 - telegram_bot - ERROR - Bot error: Cannot close a running event loop
+2025-09-04 21:22:42,874 - telegram_bot - ERROR - Full error traceback:
+Traceback (most recent call last):
+  File "C:\Users\Eslam\AppData\Local\Programs\Python\Python313\Lib\site-packages\telegram\ext\_application.py", line 1049, in __run
+    loop.run_until_complete(self._bootstrap_initialize(max_retries=bootstrap_retries))
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Eslam\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 701, in run_until_complete
+    self._check_running()
+    ~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Eslam\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 637, in _check_running
+    raise RuntimeError('This event loop is already running')
+RuntimeError: This event loop is already running
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Eslam\AppData\Local\Programs\Python\Python313\Lib\site-packages\telegram\ext\_application.py", line 1074, in __run
+    loop.run_until_complete(self.shutdown())
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\Eslam\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 701, in run_until_complete
+    self._check_running()
+    ~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Eslam\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 637, in _check_running
+    raise RuntimeError('This event loop is already running')
+RuntimeError: This event loop is already running
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Eslam\OURGOALBOT-3\app.py", line 179, in run_telegram_bot
+    await application.run_polling(allowed_updates=Update.ALL_TYPES)
+          ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Eslam\AppData\Local\Programs\Python\Python313\Lib\site-packages\telegram\ext\_application.py", line 839, in run_polling
+    return self.__run(
+           ~~~~~~~~~~^
+        updater_coroutine=self.updater.start_polling(
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+        close_loop=close_loop,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Eslam\AppData\Local\Programs\Python\Python313\Lib\site-packages\telegram\ext\_application.py", line 1079, in __run
+    loop.close()
+    ~~~~~~~~~~^^
+  File "C:\Users\Eslam\AppData\Local\Programs\Python\Python313\Lib\asyncio\proactor_events.py", line 684, in close
+    raise RuntimeError("Cannot close a running event loop")
+RuntimeError: Cannot close a running event loop
+2025-09-04 21:22:42,878 - telegram_bot - ERROR - Fatal error: Cannot close a running event loop
+2025-09-04 21:22:42,879 - telegram_bot - ERROR - Full traceback:
+Traceback (most recent call last):
+  File "C:\Users\Eslam\AppData\Local\Programs\Python\Python313\Lib\site-packages\telegram\ext\_application.py", line 1049, in __run
+    loop.run_until_complete(self._bootstrap_initialize(max_retries=bootstrap_retries))
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Eslam\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 701, in run_until_complete
+    self._check_running()
+    ~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Eslam\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 637, in _check_running
+    raise RuntimeError('This event loop is already running')
+RuntimeError: This event loop is already running
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Eslam\AppData\Local\Programs\Python\Python313\Lib\site-packages\telegram\ext\_application.py", line 1074, in __run
+    loop.run_until_complete(self.shutdown())
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\Eslam\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 701, in run_until_complete
+    self._check_running()
+    ~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Eslam\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 637, in _check_running
+    raise RuntimeError('This event loop is already running')
+RuntimeError: This event loop is already running
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Eslam\OURGOALBOT-3\app.py", line 210, in main
+    await run_telegram_bot()
+  File "C:\Users\Eslam\OURGOALBOT-3\app.py", line 179, in run_telegram_bot
+    await application.run_polling(allowed_updates=Update.ALL_TYPES)
+          ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Eslam\AppData\Local\Programs\Python\Python313\Lib\site-packages\telegram\ext\_application.py", line 839, in run_polling
+    return self.__run(
+           ~~~~~~~~~~^
+        updater_coroutine=self.updater.start_polling(
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+        close_loop=close_loop,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Eslam\AppData\Local\Programs\Python\Python313\Lib\site-packages\telegram\ext\_application.py", line 1079, in __run
+    loop.close()
+    ~~~~~~~~~~^^
+  File "C:\Users\Eslam\AppData\Local\Programs\Python\Python313\Lib\asyncio\proactor_events.py", line 684, in close
+    raise RuntimeError("Cannot close a running event loop")
+RuntimeError: Cannot close a running event loop
